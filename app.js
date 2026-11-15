@@ -269,373 +269,23 @@ async function downloadGpx(r) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/* ===================== Min MC ===================== */
-const SERVICE_TYPER = {
-  olie: { navn: "Olieskift", km: 6000, mdr: 12 },
-  kaede: { navn: "Kæde (rens/smør/stram)", km: 800, mdr: 0 },
-  daek: { navn: "Dækskift", km: 10000, mdr: 60 },
-  ventil: { navn: "Ventiljustering", km: 24000, mdr: 0 },
-  forsikring: { navn: "Forsikring", km: 0, mdr: 12 },
-  andet: { navn: "Andet", km: 0, mdr: 0 }
-};
+/* ===================== Data =====================
+   Ture, pakkelister og egne ruter gemmes lokalt på telefonen.
+   (Ældre data fra den fjernede "Min MC"-fane bliver liggende urørt.) */
 const KEY = "mcapp.v1";
 
 function defaultData() {
   return {
-    bike: { navn: "", km: 0, kmDato: today() },
-    daek: { forSize: "", bagSize: "", forTryk: "", bagTryk: "", forTrykPas: "", bagTrykPas: "" },
-    momenter: [],
-    log: [],
-    intervaller: {},
     ture: [],
     mineRuter: [],
     pakkelister: null // oprettes med standardlister første gang (se ture.js)
   };
 }
 let DB = Object.assign(defaultData(), lsGet(KEY, {}));
-function save() { lsSet(KEY, DB); updateBadge(); }
-
-function interval(type) {
-  const d = SERVICE_TYPER[type];
-  const o = DB.intervaller[type] || {};
-  return { km: o.km ?? d.km, mdr: o.mdr ?? d.mdr };
-}
-function addMonths(iso, m) {
-  const d = new Date(iso + "T12:00:00");
-  const day = d.getDate();
-  d.setMonth(d.getMonth() + m);
-  if (d.getDate() < day) d.setDate(0);
-  return d.toISOString().slice(0, 10);
-}
-function daysBetween(a, b) { return Math.round((new Date(b + "T12:00:00") - new Date(a + "T12:00:00")) / 86400000); }
-
-function reminder(type) {
-  const iv = interval(type);
-  if (!iv.km && !iv.mdr) return null;
-  const last = DB.log.filter((e) => e.type === type).sort((a, b) => (b.dato + String(b.km).padStart(9, "0")).localeCompare(a.dato + String(a.km).padStart(9, "0")))[0];
-  if (!last) return { type, iv, status: "none", text: "Ikke registreret endnu" };
-  const parts = [];
-  let status = "ok";
-  const rank = { ok: 0, soon: 1, due: 2 };
-  const bump = (s) => { if (rank[s] > rank[status]) status = s; };
-  if (iv.km && last.km !== "" && last.km != null) {
-    const nextKm = Number(last.km) + iv.km;
-    const left = nextKm - DB.bike.km;
-    if (left <= 0) { bump("due"); parts.push(`${fmtKm(-left)} over (${fmtKm(nextKm)})`); }
-    else { if (left <= Math.max(300, iv.km * 0.1)) bump("soon"); parts.push(`om ${fmtKm(left)}`); }
-  }
-  if (iv.mdr) {
-    const nextDate = addMonths(last.dato, iv.mdr);
-    const left = daysBetween(today(), nextDate);
-    if (left <= 0) { bump("due"); parts.push(`forfaldt ${fmtDate(nextDate)}`); }
-    else { if (left <= 30) bump("soon"); parts.push(`senest ${fmtDate(nextDate)}`); }
-  }
-  return { type, iv, last, status, text: parts.join(" · ") || "Ingen interval" };
-}
-
-function updateBadge() {
-  const n = Object.keys(SERVICE_TYPER).map(reminder).filter((r) => r && r.status === "due").length;
-  const span = $('.tabbar [data-tab="mc"] span');
-  span.textContent = n ? `Min MC (${n})` : "Min MC";
-  // Rødt tal på hjemmeskærmsikonet (iOS 16.4+ når appen er føjet til hjemmeskærm og notifikationer er tilladt)
-  if (badgeSupported() && Notification.permission === "granted") {
-    (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
-  }
-}
-
-function badgeSupported() { return "setAppBadge" in navigator && "Notification" in window; }
-
-async function enableBadge() {
-  try {
-    const p = await Notification.requestPermission();
-    if (p === "granted") { toast("Ikon-badge er slået til"); updateBadge(); renderMC(); }
-    else toast("Tilladelse blev ikke givet – kan ændres under Indstillinger › Notifikationer");
-  } catch { toast("Din telefon understøtter ikke badge"); }
-}
-
-/* ---------- Kalender (.ics) ----------
-   Datobaserede påmindelser lægges i telefonens kalender som heldagsbegivenheder med
-   alarm kl. 9 en uge før og på dagen. Km-baserede kan ikke tidsplanlægges. */
-function addDays(iso, n) { const t = new Date(iso + "T12:00:00"); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); }
-function icsDate(iso) { return iso.replace(/-/g, ""); }
-function icsText(s) { return String(s).replace(/\\/g, "\\\\").replace(/[,;]/g, (c) => "\\" + c).replace(/\n/g, "\\n"); }
-
-function exportCalendar() {
-  const nu = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
-  const imorgen = addDays(today(), 1);
-  const events = [];
-  const kunKm = [];
-  Object.keys(SERVICE_TYPER).forEach((type) => {
-    const r = reminder(type);
-    if (!r || !r.last) return;
-    if (!r.iv.mdr) { if (r.iv.km) kunKm.push(SERVICE_TYPER[type].navn); return; }
-    let dato = addMonths(r.last.dato, r.iv.mdr);
-    if (dato <= today()) dato = imorgen;
-    const slut = addDays(dato, 1);
-    const navn = SERVICE_TYPER[type].navn;
-    const mc = DB.bike.navn ? ` – ${DB.bike.navn}` : "";
-    const kmTekst = r.iv.km && r.last.km !== "" ? ` eller ved ${fmtKm(Number(r.last.km) + r.iv.km)}` : "";
-    events.push([
-      "BEGIN:VEVENT",
-      `UID:mcapp-${type}-${icsDate(dato)}@mc-app`,
-      `DTSTAMP:${nu}`,
-      `DTSTART;VALUE=DATE:${icsDate(dato)}`,
-      `DTEND;VALUE=DATE:${icsDate(slut)}`,
-      `SUMMARY:${icsText(`MC: ${navn}${mc}`)}`,
-      `DESCRIPTION:${icsText(`${navn} forfalder senest ${fmtDate(dato)}${kmTekst}. Sidst udført ${fmtDate(r.last.dato)}.`)}`,
-      "TRANSP:TRANSPARENT",
-      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsText(`${navn} om en uge`)}`, "TRIGGER:-P6DT15H", "END:VALARM",
-      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsText(`${navn} forfalder i dag`)}`, "TRIGGER:PT9H", "END:VALARM",
-      "END:VEVENT"
-    ].join("\r\n"));
-  });
-
-  if (!events.length) {
-    toast(kunKm.length ? "Kun km-baserede påmindelser – de vises i appen" : "Registrér først en service med datointerval");
-    return;
-  }
-  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//MC-app//DA", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", ...events, "END:VCALENDAR", ""].join("\r\n");
-  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "mc-service.ics";
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-  toast(`${events.length} påmindelse${events.length > 1 ? "r" : ""} klar til Kalender`);
-}
-
-function renderMC() {
-  destroyMap();
-  setHeader(DB.bike.navn || "Min MC");
-  const rems = Object.keys(SERVICE_TYPER).map(reminder).filter(Boolean);
-  const order = { due: 0, soon: 1, none: 2, ok: 3 };
-  rems.sort((a, b) => order[a.status] - order[b.status]);
-  const log = [...DB.log].sort((a, b) => b.dato.localeCompare(a.dato) || (b.km || 0) - (a.km || 0));
-  const d = DB.daek;
-
-  view.innerHTML = `
-    <button class="card" id="kmCard" style="margin-top:12px">
-      <div class="row">
-        <div class="grow">
-          <div class="muted">Kilometertæller</div>
-          <div style="font-size:28px;font-weight:700">${fmtKm(DB.bike.km)}</div>
-          <div class="muted">Opdateret ${fmtDate(DB.bike.kmDato)}</div>
-        </div>
-        <span class="btn secondary" style="pointer-events:none">Opdater</span>
-      </div>
-    </button>
-
-    <div class="section-title">Påmindelser</div>
-    ${rems.map((r) => `
-      <button class="card" data-add="${r.type}">
-        <div class="row">
-          <span class="status ${r.status}"></span>
-          <div class="grow">
-            <b>${esc(SERVICE_TYPER[r.type].navn)}</b>
-            <div class="muted due-text ${r.status}">${esc(r.text)}</div>
-            <div class="muted" style="font-size:12px">Interval: ${[r.iv.km ? fmtKm(r.iv.km) : "", r.iv.mdr ? r.iv.mdr + " mdr" : ""].filter(Boolean).join(" / ")}</div>
-          </div>
-          <span class="muted" style="font-size:24px">+</span>
-        </div>
-      </button>`).join("")}
-    <div class="btn-row">
-      <button class="btn secondary" id="calBtn">Læg i Kalender</button>
-      <button class="btn secondary" id="intervalBtn">Ret intervaller</button>
-    </div>
-    ${badgeSupported() && Notification.permission !== "granted" ? `<div class="btn-row"><button class="btn secondary block" id="badgeBtn">Vis tal på app-ikonet ved forfalden service</button></div>` : ""}
-
-    <div class="section-title">Dæk</div>
-    <button class="card" id="daekCard">
-      <div class="kv">
-        <div>Forhjul</div><div>${esc(d.forSize) || "–"}</div>
-        <div>Baghjul</div><div>${esc(d.bagSize) || "–"}</div>
-        <div>Tryk for (solo / m. passager)</div><div>${esc(d.forTryk) || "–"} / ${esc(d.forTrykPas) || "–"} bar</div>
-        <div>Tryk bag (solo / m. passager)</div><div>${esc(d.bagTryk) || "–"} / ${esc(d.bagTrykPas) || "–"} bar</div>
-      </div>
-    </button>
-
-    <div class="section-title">Momenter</div>
-    <div class="card">
-      ${DB.momenter.length ? `<ul class="stops">${DB.momenter.map((m) => `
-        <li class="row" data-moment="${m.id}"><span class="grow">${esc(m.navn)}</span><b>${esc(m.nm)} Nm</b></li>`).join("")}</ul>`
-        : `<div class="muted">Fx akselmøtrik, oliedrænprop, bremsekaliber, kædehjul.</div>`}
-      <button class="btn secondary block" id="momentBtn" style="margin-top:10px">Tilføj moment</button>
-    </div>
-
-    <div class="section-title">Servicelog</div>
-    ${log.length ? log.map((e) => `
-      <button class="card" data-edit="${e.id}">
-        <div class="row">
-          <div class="grow">
-            <b>${esc(SERVICE_TYPER[e.type]?.navn || e.type)}</b>
-            <div class="muted">${fmtDate(e.dato)} · ${fmtKm(e.km)}${e.pris ? " · " + esc(e.pris) + " kr." : ""}</div>
-            ${e.note ? `<div class="muted">${esc(e.note)}</div>` : ""}
-          </div>
-        </div>
-      </button>`).join("") : `<div class="empty">Ingen registreringer endnu. Tryk på + for at tilføje.</div>`}
-
-    <div class="section-title">Data</div>
-    <div class="card">
-      <div class="muted">Alt gemmes kun på denne telefon. Tag en backup en gang imellem.</div>
-      <div class="btn-row" style="margin:10px 0 0">
-        <button class="btn secondary" id="exportBtn">Backup</button>
-        <button class="btn secondary" id="importBtn">Gendan</button>
-      </div>
-      <button class="btn secondary block" id="bikeBtn" style="margin-top:10px">Navn på MC</button>
-      <input type="file" id="importFile" accept="application/json,.json" class="hidden">
-    </div>
-    <button class="fab" id="fab" aria-label="Ny registrering">+</button>
-  `;
-
-  $("#kmCard").onclick = editKm;
-  $("#fab").onclick = () => editEntry(null, "olie");
-  view.querySelectorAll("[data-add]").forEach((b) => (b.onclick = () => editEntry(null, b.dataset.add)));
-  view.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => editEntry(DB.log.find((e) => e.id === b.dataset.edit))));
-  view.querySelectorAll("[data-moment]").forEach((b) => (b.onclick = () => editMoment(DB.momenter.find((m) => m.id === b.dataset.moment))));
-  $("#momentBtn").onclick = () => editMoment(null);
-  $("#daekCard").onclick = editDaek;
-  $("#intervalBtn").onclick = editIntervals;
-  $("#calBtn").onclick = exportCalendar;
-  if ($("#badgeBtn")) $("#badgeBtn").onclick = enableBadge;
-  $("#bikeBtn").onclick = editBike;
-  $("#exportBtn").onclick = exportData;
-  $("#importBtn").onclick = () => $("#importFile").click();
-  $("#importFile").onchange = importData;
-}
+function save() { lsSet(KEY, DB); }
 
 function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
 const numOrEmpty = (v) => (v === "" || v == null ? "" : Number(String(v).replace(",", ".")));
-
-function editKm() {
-  openSheet(`
-    <h2>Opdater kilometertal</h2>
-    <form id="f">
-      <label class="field">Km-tæller nu<input name="km" type="number" inputmode="numeric" min="0" value="${DB.bike.km || ""}" required></label>
-      <button class="btn block">Gem</button>
-    </form>`, (s) => {
-    const inp = $("[name=km]", s); inp.focus(); inp.select();
-    $("#f", s).onsubmit = (e) => {
-      e.preventDefault();
-      DB.bike.km = Number(inp.value) || 0;
-      DB.bike.kmDato = today();
-      save(); closeSheet(); renderMC();
-    };
-  });
-}
-
-function editEntry(entry, defType) {
-  const e = entry || { type: defType || "olie", dato: today(), km: DB.bike.km || "", note: "", pris: "" };
-  openSheet(`
-    <h2>${entry ? "Ret registrering" : "Ny registrering"}</h2>
-    <form id="f">
-      <label class="field">Type
-        <select name="type">${Object.entries(SERVICE_TYPER).map(([k, v]) => `<option value="${k}" ${k === e.type ? "selected" : ""}>${v.navn}</option>`).join("")}</select>
-      </label>
-      <div class="grid2">
-        <label class="field">Dato<input name="dato" type="date" value="${esc(e.dato)}" required></label>
-        <label class="field">Km<input name="km" type="number" inputmode="numeric" min="0" value="${esc(e.km)}"></label>
-      </div>
-      <label class="field">Pris (kr.)<input name="pris" type="number" inputmode="decimal" min="0" step="any" value="${esc(e.pris)}"></label>
-      <label class="field">Note<textarea name="note" placeholder="Fx olietype, dækmodel, værksted, policenr.">${esc(e.note)}</textarea></label>
-      <button class="btn block">Gem</button>
-      ${entry ? `<button type="button" class="btn danger block" id="del">Slet registrering</button>` : ""}
-    </form>`, (s) => {
-    $("#f", s).onsubmit = (ev) => {
-      ev.preventDefault();
-      const d = formData(ev.target);
-      const rec = { id: entry ? entry.id : uid(), type: d.type, dato: d.dato, km: numOrEmpty(d.km), pris: d.pris, note: d.note.trim() };
-      if (entry) Object.assign(entry, rec); else DB.log.push(rec);
-      if (rec.km !== "" && rec.km > (DB.bike.km || 0)) { DB.bike.km = rec.km; DB.bike.kmDato = rec.dato > DB.bike.kmDato ? rec.dato : today(); }
-      save(); closeSheet(); renderMC(); toast("Gemt");
-    };
-    const del = $("#del", s);
-    if (del) del.onclick = () => {
-      if (!confirm("Slet denne registrering?")) return;
-      DB.log = DB.log.filter((x) => x.id !== entry.id);
-      save(); closeSheet(); renderMC();
-    };
-  });
-}
-
-function editDaek() {
-  const d = DB.daek;
-  const f = (name, label, ph, mode = "text") => `<label class="field">${label}<input name="${name}" inputmode="${mode}" placeholder="${ph}" value="${esc(d[name])}"></label>`;
-  openSheet(`
-    <h2>Dæk og dæktryk</h2>
-    <form id="f">
-      ${f("forSize", "Dækstørrelse for", "120/70 ZR17")}
-      ${f("bagSize", "Dækstørrelse bag", "180/55 ZR17")}
-      <div class="grid2">
-        ${f("forTryk", "Tryk for, solo (bar)", "2,5", "decimal")}
-        ${f("bagTryk", "Tryk bag, solo (bar)", "2,9", "decimal")}
-        ${f("forTrykPas", "For m. passager (bar)", "2,5", "decimal")}
-        ${f("bagTrykPas", "Bag m. passager (bar)", "2,9", "decimal")}
-      </div>
-      <p class="muted">Brug altid værdierne fra instruktionsbogen eller mærkaten på svingarmen.</p>
-      <button class="btn block">Gem</button>
-    </form>`, (s) => {
-    $("#f", s).onsubmit = (ev) => { ev.preventDefault(); Object.assign(DB.daek, formData(ev.target)); save(); closeSheet(); renderMC(); };
-  });
-}
-
-function editMoment(m) {
-  openSheet(`
-    <h2>${m ? "Ret moment" : "Nyt moment"}</h2>
-    <form id="f">
-      <label class="field">Hvad<input name="navn" placeholder="Fx bagakselmøtrik" value="${esc(m?.navn)}" required></label>
-      <label class="field">Moment (Nm)<input name="nm" inputmode="decimal" placeholder="100" value="${esc(m?.nm)}" required></label>
-      <button class="btn block">Gem</button>
-      ${m ? `<button type="button" class="btn danger block" id="del">Slet</button>` : ""}
-    </form>`, (s) => {
-    $("#f", s).onsubmit = (ev) => {
-      ev.preventDefault();
-      const d = formData(ev.target);
-      if (m) Object.assign(m, d); else DB.momenter.push({ id: uid(), ...d });
-      save(); closeSheet(); renderMC();
-    };
-    const del = $("#del", s);
-    if (del) del.onclick = () => { DB.momenter = DB.momenter.filter((x) => x.id !== m.id); save(); closeSheet(); renderMC(); };
-  });
-}
-
-function editIntervals() {
-  openSheet(`
-    <h2>Serviceintervaller</h2>
-    <p class="muted">Påmindelse når et af intervallerne er nået. 0 = ikke brugt. Tjek instruktionsbogen for din model.</p>
-    <form id="f">
-      ${Object.entries(SERVICE_TYPER).filter(([k]) => k !== "andet").map(([k, v]) => {
-        const iv = interval(k);
-        return `<b>${v.navn}</b>
-        <div class="grid2">
-          <label class="field">Km<input name="${k}_km" type="number" inputmode="numeric" min="0" value="${iv.km}"></label>
-          <label class="field">Måneder<input name="${k}_mdr" type="number" inputmode="numeric" min="0" value="${iv.mdr}"></label>
-        </div>`;
-      }).join("")}
-      <button class="btn block">Gem</button>
-      <button type="button" class="btn secondary block" id="reset" style="margin-top:8px">Standardværdier</button>
-    </form>`, (s) => {
-    $("#f", s).onsubmit = (ev) => {
-      ev.preventDefault();
-      const d = formData(ev.target);
-      Object.keys(SERVICE_TYPER).filter((k) => k !== "andet").forEach((k) => {
-        DB.intervaller[k] = { km: Number(d[k + "_km"]) || 0, mdr: Number(d[k + "_mdr"]) || 0 };
-      });
-      save(); closeSheet(); renderMC();
-    };
-    $("#reset", s).onclick = () => { DB.intervaller = {}; save(); closeSheet(); renderMC(); };
-  });
-}
-
-function editBike() {
-  openSheet(`
-    <h2>Min motorcykel</h2>
-    <form id="f">
-      <label class="field">Navn / model<input name="navn" placeholder="Fx Honda Africa Twin" value="${esc(DB.bike.navn)}"></label>
-      <button class="btn block">Gem</button>
-    </form>`, (s) => {
-    $("#f", s).onsubmit = (ev) => { ev.preventDefault(); DB.bike.navn = formData(ev.target).navn.trim(); save(); closeSheet(); renderMC(); };
-  });
-}
 
 async function exportData() {
   const name = `mc-app-backup-${today()}.json`;
@@ -649,16 +299,16 @@ async function exportData() {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-function importData(ev) {
+function importData(ev, efter) {
   const file = ev.target.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
       const d = JSON.parse(reader.result);
-      if (!d || typeof d !== "object" || !Array.isArray(d.log)) throw new Error("format");
+      if (!d || typeof d !== "object" || !(Array.isArray(d.ture) || Array.isArray(d.mineRuter) || Array.isArray(d.log))) throw new Error("format");
       if (!confirm("Erstat de nuværende data med backuppen?")) return;
       DB = Object.assign(defaultData(), d);
-      save(); renderMC(); toast("Backup gendannet");
+      save(); toast("Backup gendannet"); efter && efter();
     } catch { toast("Filen kunne ikke læses som backup"); }
   };
   reader.readAsText(file);
@@ -680,12 +330,12 @@ document.querySelectorAll(".tabbar button").forEach((b) => (b.onclick = () => { 
 function route() {
   closeSheet();
   const h = location.hash.slice(1) || "ruter";
-  const tab = ["mc", "vejr", "ture"].find((t) => h === t || h.startsWith(t + "/")) || "ruter";
+  if (h === "mc" || h.startsWith("mc/")) { location.replace("#ruter"); return; }
+  const tab = ["vejr", "ture"].find((t) => h === t || h.startsWith(t + "/")) || "ruter";
   document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   view.scrollTop = 0;
   if (h === "ny-rute") renderPlanner();
   else if (h.startsWith("rute/")) renderRute(h.slice(5));
-  else if (tab === "mc") renderMC();
   else if (tab === "vejr") { destroyMap(); renderVejr(); }
   else if (tab === "ture") { destroyMap(); renderTure(h.split("/").slice(1)); }
   else renderRuter();
@@ -699,7 +349,8 @@ window.addEventListener("offline", updateOnline);
 // Start når alle scripts (vejr.js, ture.js) er indlæst
 window.addEventListener("DOMContentLoaded", () => {
   updateOnline();
-  updateBadge();
+  // Fjern et evt. tal på app-ikonet fra den tidligere servicepåmindelse
+  if ("clearAppBadge" in navigator) navigator.clearAppBadge().catch(() => {});
   route();
 });
 

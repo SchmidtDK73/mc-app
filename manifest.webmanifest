@@ -1,7 +1,7 @@
 {
   "name": "MC-app",
   "short_name": "MC-app",
-  "description": "MC-ruter i Danmark og servicelog til din motorcykel",
+  "description": "MC-ruter i Danmark, MC-vejr og kørselsdagbog",
   "lang": "da",
   "start_url": "./index.html",
   "scope": "./",

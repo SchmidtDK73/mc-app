@@ -1,6 +1,6 @@
 "use strict";
 /* ===================== Ture: kørselsdagbog og pakkelister =====================
-   Data ligger i samme lokale datasæt som Min MC (DB.ture, DB.pakkelister),
+   Data ligger i appens lokale datasæt (DB.ture, DB.pakkelister),
    så de kommer med i Backup/Gendan. */
 
 const STANDARD_LISTER = [
@@ -60,15 +60,27 @@ function renderDagbog() {
           <span class="muted" style="font-size:22px">›</span>
         </div>
       </button>`).join("") : `<div class="empty">Ingen ture endnu. Tryk på + for at logge din første tur.</div>`}
+    <div class="section-title">Backup</div>
+    <div class="card">
+      <div class="muted">Ture, pakkelister og egne ruter gemmes kun på denne telefon. Tag en backup en gang imellem.</div>
+      <div class="btn-row" style="margin:10px 0 0">
+        <button class="btn secondary" id="exportBtn">Backup</button>
+        <button class="btn secondary" id="importBtn">Gendan</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" class="hidden">
+    </div>
     <button class="fab" id="fab" aria-label="Ny tur">+</button>
   `;
   $("#fab").onclick = () => editTrip(null);
+  $("#exportBtn").onclick = exportData;
+  $("#importBtn").onclick = () => $("#importFile").click();
+  $("#importFile").onchange = (e) => importData(e, renderDagbog);
   view.querySelectorAll("[data-trip]").forEach((b) => (b.onclick = () => editTrip(DB.ture.find((t) => t.id === b.dataset.trip))));
 }
 
 function editTrip(trip, routeId) {
   const r = routeId ? findRoute(routeId) : null;
-  const t = trip || { dato: today(), titel: "", rute: routeId || "", km: r && r.km ? r.km : "", odo: "", noter: "" };
+  const t = trip || { dato: today(), titel: "", rute: routeId || "", km: r && r.km ? r.km : "", noter: "" };
   openSheet(`
     <h2>${trip ? "Ret tur" : "Ny tur"}</h2>
     <form id="f">
@@ -77,10 +89,7 @@ function editTrip(trip, routeId) {
       <label class="field">Rute (valgfri)
         <select name="rute"><option value="">– Ingen –</option>${(r && r.egen && !alleRuter().includes(r) ? [r, ...alleRuter()] : alleRuter()).map((x) => `<option value="${x.id}" ${x.id === t.rute ? "selected" : ""}>${esc(x.navn)}</option>`).join("")}</select>
       </label>
-      <div class="grid2">
-        <label class="field">Km kørt<input name="km" type="number" inputmode="decimal" min="0" step="any" value="${esc(t.km)}" required></label>
-        <label class="field">Km-tæller ved hjemkomst<input name="odo" type="number" inputmode="numeric" min="0" placeholder="${DB.bike.km || ""}" value="${esc(t.odo)}"></label>
-      </div>
+      <label class="field">Km kørt<input name="km" type="number" inputmode="decimal" min="0" step="any" value="${esc(t.km)}" required></label>
       <label class="field">Noter<textarea name="noter" placeholder="Vejr, gode stop, hvem kørte med…">${esc(t.noter)}</textarea></label>
       <button class="btn block">Gem tur</button>
       ${trip ? `<button type="button" class="btn danger block" id="del">Slet tur</button>` : ""}
@@ -91,11 +100,10 @@ function editTrip(trip, routeId) {
     f.onsubmit = (ev) => {
       ev.preventDefault();
       const d = formData(f);
-      const rec = { id: trip ? trip.id : uid(), dato: d.dato, titel: d.titel.trim(), rute: d.rute, km: numOrEmpty(d.km), odo: numOrEmpty(d.odo), noter: d.noter.trim() };
+      const rec = { id: trip ? trip.id : uid(), dato: d.dato, titel: d.titel.trim(), rute: d.rute, km: numOrEmpty(d.km), noter: d.noter.trim() };
       if (!Array.isArray(DB.ture)) DB.ture = [];
       if (trip) Object.assign(trip, rec); else DB.ture.push(rec);
       let msg = "Tur gemt";
-      if (rec.odo !== "" && rec.odo > (DB.bike.km || 0)) { DB.bike.km = rec.odo; DB.bike.kmDato = today(); msg = "Tur gemt – km-tæller opdateret"; }
       save(); closeSheet(); toast(msg);
       if (location.hash.startsWith("#ture")) renderDagbog();
     };

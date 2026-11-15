@@ -5,10 +5,10 @@ Motorcykel-webapp (PWA) til iPhone. Ren HTML/CSS/JS – ingen build-trin.
 ## Kør lokalt
 
 ```bash
-python3 -m http.server 8765
+python3 -m http.server 8790
 ```
 
-Åbn http://localhost:8765.
+Åbn http://localhost:8790.
 
 ## Læg på iPhone
 
@@ -18,7 +18,7 @@ Del → "Føj til hjemmeskærm".
 
 ## Struktur
 
-- `index.html`, `styles.css`, `app.js` – appskal, Ruter og Min MC
+- `index.html`, `styles.css`, `app.js` – appskal, Ruter, datalagring og backup
 - `vejr.js` – "MC-vejr i dag?" (ja/måske/nej) med prognose fra Open-Meteo
 - `ture.js` – kørselsdagbog og pakkelister
 - `ruteplan.js` – "Lav min egen rute": rundtur ud fra start og ønsket længde (OSRM)
@@ -30,6 +30,6 @@ Del → "Føj til hjemmeskærm".
 - `vendor/` – Leaflet 1.9.4
 - `tools/make_icons.py` – genererer ikonerne i `icons/`
 
-Min MC, ture og pakkelister gemmes i `localStorage` på telefonen. Brug Backup/Gendan i appen for at flytte eller sikre data.
+Ture, pakkelister og egne ruter gemmes i `localStorage` på telefonen. Brug Backup/Gendan nederst under Ture for at flytte eller sikre data.
 
 Når app-filer ændres, så hæv `VERSION` i `sw.js`.

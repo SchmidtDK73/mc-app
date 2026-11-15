@@ -218,3 +218,6 @@ a.linkcard { display: block; color: inherit; text-decoration: none; }
 .center-link a { color: var(--accent); }
 ol.steps { padding-left: 22px; margin: 0 0 12px; }
 ol.steps li { margin-bottom: 8px; }
+.chips.sub { padding-top: 0; }
+.chips.sub .chip { min-height: 34px; padding: 5px 12px; font-size: 13px; }
+.row.tap { cursor: pointer; }

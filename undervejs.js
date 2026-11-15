@@ -6,7 +6,17 @@
    Et sted kan lægges ind som stop – ruten lægges så om forbi stedet. */
 
 const KATEGORIER = {
-  spise: { ikon: "🍽️", navn: "Spise", ental: "Spisested", soeg: "restaurant", geo: "catering.restaurant,catering.fast_food", maxM: 800 },
+  spise: {
+    ikon: "🍽️", navn: "Spise", ental: "Spisested", soeg: "restaurant", geo: "catering.restaurant,catering.fast_food", maxM: 800,
+    // Undertyper vælges i en ekstra række under Spise (filtreres lokalt, ingen ekstra opslag)
+    under: {
+      restaurant: { navn: "Restaurant", ikon: "🍽️", ental: "Restaurant", soeg: "restaurant" },
+      grill: { navn: "Grillbar", ikon: "🌭", ental: "Grillbar", soeg: "grillbar" }
+    },
+    // Geoapify har ingen grillbar-kategori: burgerbarer og steder med grill/pølse/burger o.l. i navnet
+    type: (p) => (p.categories || []).includes("catering.fast_food.burger") || /grill|pølse|burger|pommes|bøf|hot ?dog/i.test(p.name || "") ? "grill"
+      : (p.categories || []).includes("catering.restaurant") ? "restaurant" : "fast"
+  },
   cafe: { ikon: "☕", navn: "Café/is", ental: "Café", soeg: "café", geo: "catering.cafe,catering.ice_cream", maxM: 800 },
   tank: { ikon: "⛽", navn: "Tanke", ental: "Tankstation", soeg: "tankstation", geo: "service.vehicle.fuel", maxM: 1500 },
   handle: { ikon: "🛒", navn: "Handle ind", ental: "Butik", soeg: "supermarked", geo: "commercial.supermarket,commercial.convenience", maxM: 800 },
@@ -68,7 +78,7 @@ async function geoapify(line, kat) {
     (d.features || []).forEach((f) => {
       const p = f.properties || {};
       if (p.lat == null) return;
-      fund.push([Math.round(p.lat * 1e5) / 1e5, Math.round(p.lon * 1e5) / 1e5, kat, p.name || p.brand || "", p.opening_hours || p.datasource?.raw?.opening_hours || ""]);
+      fund.push([Math.round(p.lat * 1e5) / 1e5, Math.round(p.lon * 1e5) / 1e5, kat, p.name || p.brand || "", p.opening_hours || p.datasource?.raw?.opening_hours || "", K.type ? K.type(p) : "", stedInfo(p)]);
     });
   }
   return fund;
@@ -76,7 +86,7 @@ async function geoapify(line, kat) {
 
 function cacheNoegle(r, kat) {
   const a = r.line[0], b = r.line[r.line.length - 1];
-  return `${r.id}|${kat}|${r.line.length}|${a}|${b}`;
+  return `v3|${r.id}|${kat}|${KATEGORIER[kat].geo}|${r.line.length}|${a}|${b}`;
 }
 
 // Steder i én kategori langs ruten, sorteret efter km. Gemmes lokalt (max 40 opslag).
@@ -94,20 +104,109 @@ async function stederFor(r, kat) {
   }
   const set = new Set();
   const liste = raa.filter((s) => { const k = s[0] + "," + s[1]; if (set.has(k)) return false; set.add(k); return true; })
-    .map(([lat, lon, k, navn, aab]) => ({ pos: [lat, lon], kat: k, navn, aab, ...paaRuten([lat, lon], r.line, r.km) }))
+    .map(([lat, lon, k, navn, aab, type, info]) => ({ pos: [lat, lon], kat: k, navn, aab, type, info: info || {}, ...paaRuten([lat, lon], r.line, r.km) }))
     .filter((s) => s.m <= KATEGORIER[kat].maxM)
     .sort((a, b) => a.km - b.km);
   stedCache[nk] = liste;
   return liste;
 }
 
+// Udvalgte OpenStreetMap-oplysninger om stedet (kun det der findes)
+function stedInfo(p) {
+  const raw = p.datasource?.raw || {}, i = {};
+  const adr = (p.address_line2 || "").replace(/, Danmark$/, "");
+  if (adr) i.adr = adr;
+  if (raw.cuisine) i.kok = raw.cuisine;
+  if (raw.phone || raw["contact:phone"]) i.tlf = raw.phone || raw["contact:phone"];
+  if (raw.website || raw["contact:website"]) i.web = raw.website || raw["contact:website"];
+  if (raw.description) i.desc = raw.description;
+  if (raw.takeaway === "yes" || raw.takeaway === "only") i.take = raw.takeaway;
+  if (raw.outdoor_seating && raw.outdoor_seating !== "no") i.ude = 1;
+  if (raw.wheelchair === "yes") i.koer = 1;
+  if (raw["diet:vegetarian"] === "yes" || raw["diet:vegan"] === "yes") i.veg = 1;
+  if (raw["fvst:navnelbnr"]) i.smiley = raw["fvst:navnelbnr"];
+  if (raw.brand && raw.brand !== p.name) i.brand = raw.brand;
+  return i;
+}
+
+const KOEKKEN = {
+  pizza: "pizza", burger: "burger", italian: "italiensk", chinese: "kinesisk", turkish: "tyrkisk", sushi: "sushi",
+  regional: "dansk/regionalt", danish: "dansk", "smørrebrød": "smørrebrød", ice_cream: "is", coffee_shop: "kaffebar",
+  steak: "steak", steak_house: "steakhouse", sandwich: "sandwich", thai: "thai", indian: "indisk", international: "internationalt",
+  kebab: "kebab", chicken: "kylling", fish: "fisk", seafood: "fisk og skaldyr", asian: "asiatisk", mexican: "mexicansk",
+  greek: "græsk", japanese: "japansk", vietnamese: "vietnamesisk", french: "fransk", american: "amerikansk",
+  hot_dog: "pølser", sausage: "pølser", fish_and_chips: "fish and chips", cake: "kage", bakery: "bageri", shawarma: "shawarma",
+  breakfast: "morgenmad", brunch: "brunch", lebanese: "libanesisk", spanish: "spansk", noodle: "nudler", wok: "wok"
+};
+function koekken(s) { return s.split(/[;,]/).map((k) => KOEKKEN[k.trim().toLowerCase()] || k.trim().replace(/_/g, " ")).join(", "); }
+
+// "Mo-Sa 11:00-21:00; Su off" → "man–lør 11:00-21:00; søn lukket"
+function aabningDa(s) {
+  const dage = { Mo: "man", Tu: "tir", We: "ons", Th: "tor", Fr: "fre", Sa: "lør", Su: "søn", PH: "helligdage" };
+  return s.replace(/\b(Mo|Tu|We|Th|Fr|Sa|Su|PH)\b/g, (d) => dage[d]).replace(/\boff\b/g, "lukket").replace(/24\/7/g, "døgnåbent")
+    .replace(/(man|tir|ons|tor|fre|lør|søn)-(man|tir|ons|tor|fre|lør|søn)/g, "$1–$2").replace(/;\s*/g, "<br>");
+}
+
+function googleLink(s) {
+  const q = [s.navn, s.info.adr].filter(Boolean).join(", ") || `${s.pos[0]},${s.pos[1]}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
+function visSted(r, s, K, ikon, onStop) {
+  const i = s.info || {};
+  const egenskaber = [
+    i.take === "only" ? "kun takeaway" : i.take ? "takeaway" : "",
+    i.ude ? "udeservering" : "", i.veg ? "vegetarisk" : "", i.koer ? "kørestolsvenlig" : ""
+  ].filter(Boolean);
+  const web = i.web && /^https?:\/\//.test(i.web) ? i.web : i.web ? "https://" + i.web : "";
+  openSheet(`
+    <div class="row" style="align-items:flex-start">
+      <div class="uv-ikon" style="font-size:34px">${ikon}</div>
+      <div class="grow"><h2 style="margin-bottom:2px">${esc(s.navn || K.ental)}</h2>
+        <div class="muted">${esc(K.ental)}${i.kok ? " · " + esc(koekken(i.kok)) : ""}${i.brand ? " · " + esc(i.brand) : ""}</div></div>
+    </div>
+    ${i.desc ? `<p>${esc(i.desc)}</p>` : ""}
+    <div class="kv" style="margin:12px 0">
+      <div>På ruten</div><div>${fmtRuteKm(s.km)}</div>
+      <div>Afstand fra ruten</div><div>${s.m < 100 ? "ved ruten" : Math.round(s.m / 50) * 50 + " m"}</div>
+      ${i.adr ? `<div>Adresse</div><div>${esc(i.adr)}</div>` : ""}
+      ${egenskaber.length ? `<div>Andet</div><div>${egenskaber.join(", ")}</div>` : ""}
+    </div>
+    ${s.aab ? `<div class="card" style="margin:0 0 10px"><b>Åbningstider</b><div class="muted">${aabningDa(esc(s.aab))}</div></div>` : ""}
+    <div class="card" style="margin:0 0 10px">
+      <b>Anmeldelser og kontrol</b>
+      <div class="muted" style="margin-bottom:8px">Appen har ikke selv anmeldelser – se dem hos Google eller i Apple Kort.</div>
+      <div class="btn-row" style="margin:0"><a class="btn secondary" target="_blank" rel="noopener" href="${googleLink(s)}">⭐ Google</a>
+        <a class="btn secondary" target="_blank" rel="noopener" href="${kortLink(s)}">Apple Kort</a></div>
+      ${i.smiley ? `<a class="btn secondary block" style="margin-top:8px" target="_blank" rel="noopener" href="https://www.findsmiley.dk/${encodeURIComponent(i.smiley)}">🙂 Fødevarestyrelsens smiley-rapport</a>` : ""}
+    </div>
+    <div class="btn-row" style="margin:0 0 8px">
+      ${i.tlf ? `<a class="btn secondary" href="tel:${esc(i.tlf.replace(/\s+/g, ""))}">📞 Ring</a>` : ""}
+      ${web ? `<a class="btn secondary" target="_blank" rel="noopener" href="${esc(web)}">🌐 Hjemmeside</a>` : ""}
+    </div>
+    <button class="btn block" id="stopNu">Tilføj som stop på ruten</button>
+    <button class="btn secondary block" id="lukSted" style="margin-top:8px">Luk</button>
+    <p class="muted" style="font-size:12px">Oplysninger fra OpenStreetMap via Geoapify – kan være ufuldstændige.</p>`, (sh) => {
+    $("#lukSted", sh).onclick = closeSheet;
+    $("#stopNu", sh).onclick = (e) => onStop(e.currentTarget);
+  });
+}
+
+// Hvor langt henne ad ruten: "efter 350 m", "efter 4,2 km", "efter 37 km"
+function fmtRuteKm(km) {
+  if (km < 1) return `efter ${Math.max(50, Math.round((km * 1000) / 50) * 50)} m`;
+  if (km < 10) return `efter ${km.toLocaleString("da-DK", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} km`;
+  return `efter ${Math.round(km)} km`;
+}
+
 function kortLink(s) {
   const q = encodeURIComponent(s.navn || KATEGORIER[s.kat].ental);
   return `https://maps.apple.com/?q=${q}&ll=${s.pos[0]},${s.pos[1]}`;
 }
-function soegLink(r, kat) {
-  const mid = r.line[Math.floor(r.line.length / 2)];
-  return `https://maps.apple.com/?q=${encodeURIComponent(KATEGORIER[kat].soeg)}&sll=${mid[0]},${mid[1]}&z=10`;
+let soegMidt = null; // midtpunkt af den rute der vises
+function soegLink(K) {
+  const mid = soegMidt || [56.2, 10.0];
+  return `https://maps.apple.com/?q=${encodeURIComponent(K.soeg)}&sll=${mid[0]},${mid[1]}&z=10`;
 }
 
 /* ---------- Visning på rutesiden ---------- */
@@ -115,11 +214,13 @@ function initUndervejs(r) {
   const box = $("#undervejs");
   if (!box) return;
   uvLayer = null; // kortet er nyt
+  soegMidt = r.line[Math.floor(r.line.length / 2)];
   // Vis stop med position som markører
   r.stop.filter((s) => s.pos).forEach((s) => L.marker(s.pos, { icon: L.divIcon({ className: "uv-pin stop", html: "📍", iconSize: [30, 30] }) }).bindTooltip(s.navn).addTo(map));
   box.innerHTML = `
     <div class="section-title">Find undervejs</div>
     <div class="chips" id="uvChips">${Object.entries(KATEGORIER).map(([k, v]) => `<button class="chip" data-kat="${k}">${v.ikon} ${v.navn}</button>`).join("")}</div>
+    <div id="uvSub"></div>
     <div id="uvList"></div>`;
   $("#uvChips").onclick = (e) => {
     const b = e.target.closest(".chip"); if (!b) return;
@@ -128,29 +229,38 @@ function initUndervejs(r) {
   };
 }
 
-async function visKategori(r, kat) {
-  const list = $("#uvList");
-  const K = KATEGORIER[kat];
+async function visKategori(r, kat, under = "") {
+  const list = $("#uvList"), sub = $("#uvSub");
+  const K0 = KATEGORIER[kat];
+  // Undertype (fx Grillbar under Spise) overtager ikon, navn og søgeord
+  const K = under && K0.under ? { ...K0, ...K0.under[under] } : K0;
+  sub.innerHTML = K0.under ? `<div class="chips sub">
+      <button class="chip ${!under ? "on" : ""}" data-under="">Alle</button>
+      ${Object.entries(K0.under).map(([k, v]) => `<button class="chip ${under === k ? "on" : ""}" data-under="${k}">${v.ikon} ${v.navn}</button>`).join("")}
+    </div>` : "";
+  sub.querySelectorAll("[data-under]").forEach((b) => (b.onclick = () => visKategori(r, kat, b.dataset.under)));
   list.innerHTML = `<div class="empty">Søger efter ${K.navn.toLowerCase()} langs ruten…</div>`;
   let steder;
-  try { steder = await stederFor(r, kat); }
+  try { steder = (await stederFor(r, kat)).filter((s) => !under || s.type === under); }
   catch (e) {
     list.innerHTML = `<div class="card">${e && e.message === "Mangler nøgle" ? "Stedsøgning er ikke sat op endnu." : "Kunne ikke hente steder lige nu – er du offline?"}
-      <div class="btn-row" style="margin:10px 0 0"><a class="btn secondary" target="_blank" rel="noopener" href="${soegLink(r, kat)}">Søg ${K.navn.toLowerCase()} i Kort</a></div></div>`;
+      <div class="btn-row" style="margin:10px 0 0"><a class="btn secondary" target="_blank" rel="noopener" href="${soegLink(K)}">Søg ${K.navn.toLowerCase()} i Kort</a></div></div>`;
     return;
   }
   if (!$("#uvList") || !view.querySelector(`#uvChips .chip.on[data-kat="${kat}"]`)) return; // brugeren har valgt noget andet
   if (uvLayer) uvLayer.remove();
-  uvLayer = L.layerGroup(steder.map((s) => L.marker(s.pos, { icon: L.divIcon({ className: "uv-pin", html: K.ikon, iconSize: [30, 30] }) }).bindTooltip(s.navn || K.ental))).addTo(map);
+  const ikon = (s) => (s.type && K0.under && K0.under[s.type] ? K0.under[s.type].ikon : K.ikon);
+  uvLayer = L.layerGroup(steder.map((s) => L.marker(s.pos, { icon: L.divIcon({ className: "uv-pin", html: ikon(s), iconSize: [30, 30] }) }).bindTooltip(s.navn || K.ental))).addTo(map);
   list.innerHTML = steder.length ? steder.slice(0, 40).map((s, i) => `
     <div class="card">
-      <div class="row">
-        <div class="uv-ikon">${K.ikon}</div>
+      <div class="row tap" data-info="${i}">
+        <div class="uv-ikon">${ikon(s)}</div>
         <div class="grow">
-          <b>${esc(s.navn || K.ental)}</b>
-          <div class="muted">efter ca. ${Math.round(s.km)} km · ${s.m < 100 ? "ved ruten" : Math.round(s.m / 50) * 50 + " m fra ruten"}</div>
-          ${s.aab ? `<div class="muted" style="font-size:13px">Åbent: ${esc(s.aab)}</div>` : ""}
+          <b>${esc(s.navn || K.ental)}</b>${s.info && s.info.kok ? ` <span class="muted" style="font-size:13px">· ${esc(koekken(s.info.kok))}</span>` : ""}
+          <div class="muted">${fmtRuteKm(s.km)} · ${s.m < 100 ? "ved ruten" : Math.round(s.m / 50) * 50 + " m fra ruten"}</div>
+          ${s.aab ? `<div class="muted" style="font-size:13px">Åbent: ${aabningDa(esc(s.aab)).replace(/<br>/g, "; ")}</div>` : ""}
         </div>
+        <span class="muted" style="font-size:22px">›</span>
       </div>
       <div class="btn-row" style="margin:10px 0 0">
         <a class="btn secondary" target="_blank" rel="noopener" href="${kortLink(s)}">Vis i Kort</a>
@@ -158,8 +268,13 @@ async function visKategori(r, kat) {
       </div>
     </div>`).join("") + `<p class="muted pad">Data fra <a href="https://www.geoapify.com/" target="_blank" rel="noopener" style="color:var(--accent)">Geoapify</a> og OpenStreetMap – åbningstider kan være forældede.</p>`
     : `<div class="card">Ingen ${K.navn.toLowerCase()} fundet tæt på ruten.
-        <div class="btn-row" style="margin:10px 0 0"><a class="btn secondary" target="_blank" rel="noopener" href="${soegLink(r, kat)}">Søg i Kort</a></div></div>`;
+        <div class="btn-row" style="margin:10px 0 0"><a class="btn secondary" target="_blank" rel="noopener" href="${soegLink(K)}">Søg i Kort</a></div></div>`;
   list.querySelectorAll("[data-stop]").forEach((b) => (b.onclick = () => tilfoejStop(r, steder[Number(b.dataset.stop)], b)));
+  list.querySelectorAll("[data-info]").forEach((row) => (row.onclick = () => {
+    const s = steder[Number(row.dataset.info)];
+    const Ks = s.type && K0.under && K0.under[s.type] ? { ...K0, ...K0.under[s.type] } : K;
+    visSted(r, s, Ks, ikon(s), (knap) => { closeSheet(); tilfoejStop(r, s, knap); });
+  }));
 }
 
 // Læg ruten om forbi stedet: erstat et lille stykke af ruten med en omvej via stedet
@@ -172,8 +287,9 @@ async function tilfoejStop(r, s, knap) {
     const omvej = await osrmRute([line[a], s.pos, line[b]]);
     const nyLine = line.slice(0, a).concat(omvej.line, line.slice(b + 1));
     const gammelKm = linjeKm(line), nyKm = linjeKm(nyLine);
-    const K = KATEGORIER[s.kat];
-    const stop = { navn: s.navn || K.ental, tekst: `${K.ental} – tilføjet som stop efter ca. ${Math.round(s.km)} km`, pos: s.pos };
+    const K0 = KATEGORIER[s.kat];
+    const K = s.type && K0.under && K0.under[s.type] ? { ...K0, ...K0.under[s.type] } : K0;
+    const stop = { navn: s.navn || K.ental, tekst: `${K.ental} – tilføjet som stop ${fmtRuteKm(s.km)}`, pos: s.pos };
     let maal = r;
     if (!r.egen) {
       maal = { ...r, id: "egen-" + uid(), egen: true, basis: r.id, hjem: undefined, navn: `${r.navn} med stop`, stop: [...r.stop], oprettet: today() };
