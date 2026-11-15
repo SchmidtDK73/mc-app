@@ -13,9 +13,13 @@ const KATEGORIER = {
       restaurant: { navn: "Restaurant", ikon: "🍽️", ental: "Restaurant", soeg: "restaurant" },
       grill: { navn: "Grillbar", ikon: "🌭", ental: "Grillbar", soeg: "grillbar" }
     },
-    // Geoapify har ingen grillbar-kategori: burgerbarer og steder med grill/pølse/burger o.l. i navnet
-    type: (p) => (p.categories || []).includes("catering.fast_food.burger") || /grill|pølse|burger|pommes|bøf|hot ?dog/i.test(p.name || "") ? "grill"
-      : (p.categories || []).includes("catering.restaurant") ? "restaurant" : "fast"
+    // Restauranter er altid "Restaurant" (fx steakhouse med "grill" i navnet).
+    // Geoapify har ingen grillbar-kategori: blandt fastfood tæller burgerbarer og steder med grill/pølse/burger o.l. i navnet
+    type: (p) => {
+      const c = p.categories || [];
+      if (c.includes("catering.restaurant")) return "restaurant";
+      return c.includes("catering.fast_food.burger") || /grill|pølse|burger|pommes|bøf|hot ?dog/i.test(p.name || "") ? "grill" : "fast";
+    }
   },
   cafe: { ikon: "☕", navn: "Café/is", ental: "Café", soeg: "café", geo: "catering.cafe,catering.ice_cream", maxM: 800 },
   tank: { ikon: "⛽", navn: "Tanke", ental: "Tankstation", soeg: "tankstation", geo: "service.vehicle.fuel", maxM: 1500 },
@@ -86,7 +90,7 @@ async function geoapify(line, kat) {
 
 function cacheNoegle(r, kat) {
   const a = r.line[0], b = r.line[r.line.length - 1];
-  return `v3|${r.id}|${kat}|${KATEGORIER[kat].geo}|${r.line.length}|${a}|${b}`;
+  return `v4|${r.id}|${kat}|${KATEGORIER[kat].geo}|${r.line.length}|${a}|${b}`;
 }
 
 // Steder i én kategori langs ruten, sorteret efter km. Gemmes lokalt (max 40 opslag).
