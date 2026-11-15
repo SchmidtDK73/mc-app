@@ -2,6 +2,76 @@
 // Fakta er tjekket mod offentlige kilder (Naturstyrelsen, FDM, VisitDenmark m.fl.) – se "kilder" pr. rute.
 // Vejtype: "kyst" = kystvej, "bakket" = bakket/snoet, "landevej" = åben landevej.
 window.ROUTES = [
+  /* ---------- Hjemmeture: rundture fra Hobro, Randers og Aars ---------- */
+  {
+    id: "mariager-fjord",
+    navn: "Mariager Fjord rundt",
+    region: "Nordjylland",
+    hjem: "Hobro",
+    vejtype: ["kyst", "bakket"],
+    start: "Hobro", slut: "Hobro (rundtur)",
+    beskrivelse:
+      "Rundt om Mariager Fjord fra Hobro: ad sydsiden til klosterbyen Mariager og Hadsund, over Hadsundbroen og tilbage langs nordsiden via Vebbestrup og Valsgård. " +
+      "Bakker og fjordudsigt hele vejen. Bemærk at Hadsundbroen er en klapbro, der om sommeren åbner for skibe hver halve time i dagtimerne – regn med lidt ventetid.",
+    stop: [
+      { navn: "Fyrkat Vikingeborg", tekst: "Ringborg fra vikingetiden ca. 3 km vest for Hobro – på UNESCOs verdensarvsliste. Kort afstikker fra start." },
+      { navn: "Mariager", tekst: "Gammel klosterby med brostensgader, Mariager Kirke og Kloster samt Saltcenteret." },
+      { navn: "Hohøj", tekst: "Stor gravhøj fra bronzealderen med udsigt over fjorden – lille afstikker mellem Mariager og Hadsund." },
+      { navn: "Hadsundbroen", tekst: "251,7 m lang klapbro over fjorden. Café og havn i Hadsund." },
+      { navn: "Hobro havn og Østerskov", tekst: "Afslut ved havnen i bunden af fjorden." }
+    ],
+    kilder: [
+      { navn: "VisitDenmark: Mariagerfjord-ruten (rute 32)", url: "https://www.visitdenmark.com/denmark/plan-your-trip/route-32-the-mariagerfjord-route-gdk1113420" },
+      { navn: "Danmarks Naturfredningsforening: Mariager Fjord-ruten (PDF)", url: "https://mariagerfjord.dn.dk/departments-media/7072/mariager_fjordruten_a4_apr11_-81mb.pdf" },
+      { navn: "Opdag Danmark: Mariagerfjord", url: "https://www.opdagdanmark.dk/mariagerfjord/" }
+    ]
+  },
+  {
+    id: "randers-fjord",
+    navn: "Randers Fjord rundt",
+    region: "Midtjylland",
+    hjem: "Randers",
+    vejtype: ["kyst", "landevej"],
+    start: "Randers", slut: "Randers (rundtur)",
+    beskrivelse:
+      "Fra Randers ud langs sydsiden af Randers Fjord via Assentoft til Udbyhøj ved Kattegat, over fjordens munding med den lille kabelfærge og hjem langs nordsiden via Havndal, Øster Tørslev og Gjerlev. " +
+      "Flade, åbne landeveje med fjord- og engudsigt. Færgen tager op til 12 biler og sejler efter behov uden for højsæsonen – tjek sejlplanen før du kører (Randers Fjords Færgefart, tlf. 20 78 51 32).",
+    stop: [
+      { navn: "Randers", tekst: "Start ved Gudenåen og havnen." },
+      { navn: "Udbyhøj Syd", tekst: "Kabelfærgen over Randers Fjord. Kort overfart." },
+      { navn: "Udbyhøj (nordsiden)", tekst: "Lystbådehavn og lille fiskerleje ved fjordens udløb i Kattegat." },
+      { navn: "Havndal", tekst: "Landsby på nordsiden – herfra over landet tilbage mod Randers." }
+    ],
+    kilder: [
+      { navn: "VisitDenmark: Udbyhøj-kabelfærgen", url: "https://www.visitdenmark.com/denmark/plan-your-trip/udbyhoj-cable-ferry-across-randers-fjord-gdk605011" },
+      { navn: "Randers Kommune: Færgefart", url: "https://www.randers.dk/om-os/organisering/udvikling-miljoe-og-teknik/plan-by-og-natur/randers-faergefart-og-flyveplads/" },
+      { navn: "VisitDenmark: Udbyhøj Marina", url: "https://www.visitdenmark.com/denmark/plan-your-trip/marina-udbyhoj-gdk605095" }
+    ]
+  },
+  {
+    id: "vesthimmerland",
+    navn: "Vesthimmerland & Limfjorden",
+    region: "Nordjylland",
+    hjem: "Aars",
+    vejtype: ["kyst", "landevej", "bakket"],
+    start: "Aars", slut: "Aars (rundtur)",
+    beskrivelse:
+      "Fra Aars mod vest over Farsø til Hvalpsund ved Limfjorden, videre forbi Gedsted og Aalestrup og hjem til Aars. " +
+      "Rolige landeveje gennem Himmerlands bakkede landbrugsland og en havn med udsigt over tre fjorde. Gode muligheder for afstikkere til Louns-halvøen og Hessel.",
+    stop: [
+      { navn: "Farsø", tekst: "Barndomsby for forfatterne Johannes V. Jensen og Thit Jensen – deres barndomshjem kan besøges." },
+      { navn: "Hvalpsund", tekst: "Færgeby ved Limfjorden med havn og udsigt til Limfjorden, Skive Fjord og Hjarbæk Fjord." },
+      { navn: "Louns-halvøen (afstikker)", tekst: "Kuperet natur med skov, hede og kyst; Louns Kirke med rødder i middelalderen." },
+      { navn: "Herregården Hessel", tekst: "En af Danmarks bedst bevarede stråtækte herregårde – i dag museum." },
+      { navn: "Aars", tekst: "Gundestrupkarret blev fundet i Rævemosen nær Aars." }
+    ],
+    kilder: [
+      { navn: "VisitHimmerland: Hvalpsund", url: "https://www.visithimmerland.eu/towns-and-locations/hvalpsund" },
+      { navn: "VisitDenmark: Louns-halvøen", url: "https://www.visitdenmark.com/denmark/plan-your-trip/louns-peninsula-gdk623551" },
+      { navn: "VisitDenmark: Kulturhistorisk rundtur langs Limfjorden i Himmerland", url: "https://www.visitdenmark.com/denmark/plan-your-trip/kulturhistorisk-rundtur-langs-limfjorden-i-himmerland-gdk1159056" }
+    ]
+  },
+  /* ---------- Øvrige ruter i Danmark ---------- */
   {
     id: "margueritruten-soehoejlandet",
     navn: "Margueritruten – Søhøjlandet",

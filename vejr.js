@@ -5,8 +5,9 @@
    eller i morgen kl. 8–21 hvis det er sent). Seneste prognose gemmes til offline-brug. */
 
 const BYER = {
+  "Aars": [56.8, 9.52], "Hobro": [56.64, 9.79], "Randers": [56.46, 10.04],
   "København": [55.68, 12.57], "Aarhus": [56.16, 10.2], "Odense": [55.4, 10.39], "Aalborg": [57.05, 9.92],
-  "Esbjerg": [55.48, 8.45], "Vejle": [55.71, 9.54], "Randers": [56.46, 10.04], "Herning": [56.14, 8.97],
+  "Esbjerg": [55.48, 8.45], "Vejle": [55.71, 9.54], "Herning": [56.14, 8.97],
   "Silkeborg": [56.17, 9.55], "Roskilde": [55.64, 12.08], "Næstved": [55.23, 11.76], "Hillerød": [55.93, 12.31],
   "Sønderborg": [54.91, 9.79], "Holstebro": [56.36, 8.62], "Frederikshavn": [57.44, 10.54], "Svendborg": [55.06, 10.61],
   "Rønne": [55.1, 14.7]

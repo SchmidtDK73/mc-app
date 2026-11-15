@@ -202,3 +202,4 @@ a.linkcard { display: block; color: inherit; text-decoration: none; }
 }
 .tabbar span { white-space: nowrap; }
 .check .grow { flex: 1; min-width: 0; }
+.tag.home { background: var(--accent); color: var(--accent-text); }

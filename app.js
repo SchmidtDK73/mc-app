@@ -53,11 +53,12 @@ async function loadGeometry() {
   return GEO;
 }
 
-const filters = Object.assign({ region: "", laengde: "", vejtype: "" }, lsGet("mcapp.filters", {}));
+const filters = Object.assign({ hjem: "", region: "", laengde: "", vejtype: "" }, lsGet("mcapp.filters", {}));
 
 function laengdeKlasse(km) { return km < 50 ? "kort" : km <= 80 ? "mellem" : "lang"; }
 function filtered() {
   return ROUTES.filter((r) =>
+    (!filters.hjem || r.hjem === filters.hjem) &&
     (!filters.region || r.region === filters.region) &&
     (!filters.laengde || laengdeKlasse(r.km) === filters.laengde) &&
     (!filters.vejtype || r.vejtype.includes(filters.vejtype))
@@ -93,6 +94,7 @@ async function renderRuter() {
   const list = filtered();
   view.innerHTML = `
     <div id="map" class="map"></div>
+    <div class="filter-label">Rundtur fra</div>${chipRow("hjem", { Aars: "Aars", Hobro: "Hobro", Randers: "Randers" }, "Alle")}
     <div class="filter-label">Region</div>${chipRow("region", regions, "Hele landet")}
     <div class="filter-label">Længde</div>${chipRow("laengde", LAENGDER, "Alle")}
     <div class="filter-label">Vejtype</div>${chipRow("vejtype", VEJTYPER, "Alle")}
@@ -104,7 +106,7 @@ async function renderRuter() {
           <div class="grow">
             <h3>${esc(r.navn)}</h3>
             <div class="muted">${esc(r.region)} · ${r.km} km · ca. ${fmtTid(r.min)}</div>
-            ${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}
+            ${r.hjem ? `<span class="tag home">Rundtur fra ${esc(r.hjem)}</span>` : ""}${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}
           </div>
           <span class="muted" style="font-size:22px">›</span>
         </div>
