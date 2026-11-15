@@ -1,19 +1,18 @@
 "use strict";
 /* ===================== Find undervejs =====================
-   Spisesteder, caféer, tankstationer, butikker og toiletter langs en rute (OpenStreetMap).
-   Faste ruter: forudhentet i data/steder.json (virker offline).
-   Egne ruter: hentes live fra Overpass (flere servere), gemmes på ruten når den er gemt.
+   Spisesteder, caféer, tankstationer, butikker og toiletter langs en rute.
+   Data fra Geoapify Places API (bygget på OpenStreetMap). Nøglen ligger i config.js og er
+   låst til appens adresse hos Geoapify. Resultater gemmes lokalt, så de også kan ses offline.
    Et sted kan lægges ind som stop – ruten lægges så om forbi stedet. */
 
 const KATEGORIER = {
-  spise: { ikon: "🍽️", navn: "Spise", ental: "Spisested", soeg: "restaurant" },
-  cafe: { ikon: "☕", navn: "Café/is", ental: "Café", soeg: "café" },
-  tank: { ikon: "⛽", navn: "Tanke", ental: "Tankstation", soeg: "tankstation" },
-  handle: { ikon: "🛒", navn: "Handle ind", ental: "Butik", soeg: "supermarked" },
-  toilet: { ikon: "🚻", navn: "Toilet", ental: "Toilet", soeg: "offentligt toilet" }
+  spise: { ikon: "🍽️", navn: "Spise", ental: "Spisested", soeg: "restaurant", geo: "catering.restaurant,catering.fast_food", maxM: 800 },
+  cafe: { ikon: "☕", navn: "Café/is", ental: "Café", soeg: "café", geo: "catering.cafe,catering.ice_cream", maxM: 800 },
+  tank: { ikon: "⛽", navn: "Tanke", ental: "Tankstation", soeg: "tankstation", geo: "service.vehicle.fuel", maxM: 1500 },
+  handle: { ikon: "🛒", navn: "Handle ind", ental: "Butik", soeg: "supermarked", geo: "commercial.supermarket,commercial.convenience", maxM: 800 },
+  toilet: { ikon: "🚻", navn: "Toilet", ental: "Toilet", soeg: "offentligt toilet", geo: "amenity.toilet", maxM: 800 }
 };
-const OVERPASS = ["https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://overpass-api.de/api/interpreter"];
-let STEDER_FAST = null;
+const STED_KEY = "mcapp.steder";
 const stedCache = {};
 let uvLayer = null;
 
@@ -42,60 +41,63 @@ function paaRuten(p, line, rKm) {
   return { m: best * 1000, km: (km * (rKm || total)) / total, i: bestI };
 }
 
-async function hentFaste() {
-  if (!STEDER_FAST) {
-    try { const res = await fetch("data/steder.json"); STEDER_FAST = res.ok ? await res.json() : {}; }
-    catch { STEDER_FAST = {}; }
+// Del ruten i stykker á ca. 30 km, så hvert opslag dækker et lille område (max 200 steder pr. opslag)
+function ruteStykker(line, margin) {
+  const stykker = [];
+  let cur = [line[0]], km = 0;
+  for (let i = 1; i < line.length; i++) {
+    cur.push(line[i]); km += hav(line[i - 1], line[i]);
+    if (km >= 30 || i === line.length - 1) { stykker.push(cur); cur = [line[i]]; km = 0; }
   }
-  return STEDER_FAST;
+  return stykker.map((p) => {
+    const la = p.map((x) => x[0]), lo = p.map((x) => x[1]), mlo = margin / Math.cos((la[0] * Math.PI) / 180);
+    return [Math.min(...lo) - mlo, Math.min(...la) - margin, Math.max(...lo) + mlo, Math.max(...la) + margin].map((v) => v.toFixed(5)).join(",");
+  });
 }
 
-async function overpassLive(line) {
-  const la = line.map((p) => p[0]), lo = line.map((p) => p[1]), m = 0.015;
-  const bb = `${Math.min(...la) - m},${Math.min(...lo) - m},${Math.max(...la) + m},${Math.max(...lo) + m}`;
-  const q = `[out:json][timeout:60];(nwr["amenity"~"^(restaurant|fast_food|cafe|ice_cream|fuel|toilets)$"](${bb});nwr["shop"~"^(supermarket|convenience)$"](${bb}););out center tags;`;
-  const AM = { restaurant: "spise", fast_food: "spise", cafe: "cafe", ice_cream: "cafe", fuel: "tank", toilets: "toilet" };
-  const SH = { supermarket: "handle", convenience: "handle" };
-  for (const url of OVERPASS) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 45000);
-    try {
-      const res = await fetch(url, { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" }, signal: ctrl.signal });
-      if (!res.ok) continue;
-      const d = await res.json();
-      return d.elements.map((el) => {
-        const t = el.tags || {}, kat = AM[t.amenity] || SH[t.shop];
-        const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
-        return kat && lat != null ? [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5, kat, t.name || t.brand || "", t.opening_hours || ""] : null;
-      }).filter(Boolean);
-    } catch { /* prøv næste server */ } finally { clearTimeout(timer); }
+async function geoapify(line, kat) {
+  const key = window.GEOAPIFY_KEY;
+  if (!key) throw new Error("Mangler nøgle");
+  const K = KATEGORIER[kat], margin = K.maxM / 111000 + 0.002;
+  const fund = [];
+  for (const rect of ruteStykker(line, margin)) {
+    const url = `https://api.geoapify.com/v2/places?categories=${K.geo}&filter=rect:${rect}&limit=200&lang=da&apiKey=${encodeURIComponent(key)}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const d = await res.json();
+    (d.features || []).forEach((f) => {
+      const p = f.properties || {};
+      if (p.lat == null) return;
+      fund.push([Math.round(p.lat * 1e5) / 1e5, Math.round(p.lon * 1e5) / 1e5, kat, p.name || p.brand || "", p.opening_hours || p.datasource?.raw?.opening_hours || ""]);
+    });
   }
-  throw new Error("Ingen svar");
+  return fund;
 }
 
-// Alle steder for ruten med afstand og km-position
-async function stederFor(r) {
-  if (stedCache[r.id]) return stedCache[r.id];
-  let raa = [];
-  const basis = r.egen ? r.basis : r.id;
-  const fast = basis ? (await hentFaste())[basis] : null;
-  if (fast) raa = raa.concat(fast);
-  if (!r.egen && !fast) raa = raa.concat(await overpassLive(r.line)); // ingen forudhentede data → hent live
-  if (r.egen) {
-    if (r.steder) raa = raa.concat(r.steder);
-    else {
-      const live = await overpassLive(r.line);
-      r.steder = live;
-      if ((DB.mineRuter || []).some((x) => x.id === r.id)) save();
-      raa = raa.concat(live);
-    }
+function cacheNoegle(r, kat) {
+  const a = r.line[0], b = r.line[r.line.length - 1];
+  return `${r.id}|${kat}|${r.line.length}|${a}|${b}`;
+}
+
+// Steder i én kategori langs ruten, sorteret efter km. Gemmes lokalt (max 40 opslag).
+async function stederFor(r, kat) {
+  const nk = cacheNoegle(r, kat);
+  if (stedCache[nk]) return stedCache[nk];
+  const gemt = lsGet(STED_KEY, {});
+  let raa = gemt[nk] && Date.now() - gemt[nk].t < 30 * 86400000 ? gemt[nk].s : null;
+  if (!raa) {
+    raa = await geoapify(r.line, kat);
+    gemt[nk] = { t: Date.now(), s: raa };
+    const noegler = Object.keys(gemt).sort((x, y) => gemt[y].t - gemt[x].t);
+    noegler.slice(40).forEach((k) => delete gemt[k]);
+    lsSet(STED_KEY, gemt);
   }
   const set = new Set();
-  const liste = raa.filter((s) => { const k = s[0] + "," + s[1] + s[2]; if (set.has(k)) return false; set.add(k); return true; })
-    .map(([lat, lon, kat, navn, aab]) => ({ pos: [lat, lon], kat, navn, aab, ...paaRuten([lat, lon], r.line, r.km) }))
-    .filter((s) => s.m <= (s.kat === "tank" ? 1500 : 800))
+  const liste = raa.filter((s) => { const k = s[0] + "," + s[1]; if (set.has(k)) return false; set.add(k); return true; })
+    .map(([lat, lon, k, navn, aab]) => ({ pos: [lat, lon], kat: k, navn, aab, ...paaRuten([lat, lon], r.line, r.km) }))
+    .filter((s) => s.m <= KATEGORIER[kat].maxM)
     .sort((a, b) => a.km - b.km);
-  stedCache[r.id] = liste;
+  stedCache[nk] = liste;
   return liste;
 }
 
@@ -129,16 +131,15 @@ function initUndervejs(r) {
 async function visKategori(r, kat) {
   const list = $("#uvList");
   const K = KATEGORIER[kat];
-  list.innerHTML = `<div class="empty">Søger efter ${K.navn.toLowerCase()} langs ruten…${!stedCache[r.id] && !(STEDER_FAST && STEDER_FAST[r.egen ? r.basis : r.id]) ? "<br>Det kan tage op til et minut." : ""}</div>`;
-  let alle;
-  try { alle = await stederFor(r); }
-  catch {
-    list.innerHTML = `<div class="card">Kunne ikke hente steder lige nu (kortdatatjenesten er optaget eller du er offline).
+  list.innerHTML = `<div class="empty">Søger efter ${K.navn.toLowerCase()} langs ruten…</div>`;
+  let steder;
+  try { steder = await stederFor(r, kat); }
+  catch (e) {
+    list.innerHTML = `<div class="card">${e && e.message === "Mangler nøgle" ? "Stedsøgning er ikke sat op endnu." : "Kunne ikke hente steder lige nu – er du offline?"}
       <div class="btn-row" style="margin:10px 0 0"><a class="btn secondary" target="_blank" rel="noopener" href="${soegLink(r, kat)}">Søg ${K.navn.toLowerCase()} i Kort</a></div></div>`;
     return;
   }
   if (!$("#uvList") || !view.querySelector(`#uvChips .chip.on[data-kat="${kat}"]`)) return; // brugeren har valgt noget andet
-  const steder = alle.filter((s) => s.kat === kat);
   if (uvLayer) uvLayer.remove();
   uvLayer = L.layerGroup(steder.map((s) => L.marker(s.pos, { icon: L.divIcon({ className: "uv-pin", html: K.ikon, iconSize: [30, 30] }) }).bindTooltip(s.navn || K.ental))).addTo(map);
   list.innerHTML = steder.length ? steder.slice(0, 40).map((s, i) => `
@@ -155,7 +156,7 @@ async function visKategori(r, kat) {
         <a class="btn secondary" target="_blank" rel="noopener" href="${kortLink(s)}">Vis i Kort</a>
         <button class="btn secondary" data-stop="${i}">Tilføj som stop</button>
       </div>
-    </div>`).join("") + `<p class="muted pad">Data fra OpenStreetMap – åbningstider kan være forældede.</p>`
+    </div>`).join("") + `<p class="muted pad">Data fra <a href="https://www.geoapify.com/" target="_blank" rel="noopener" style="color:var(--accent)">Geoapify</a> og OpenStreetMap – åbningstider kan være forældede.</p>`
     : `<div class="card">Ingen ${K.navn.toLowerCase()} fundet tæt på ruten.
         <div class="btn-row" style="margin:10px 0 0"><a class="btn secondary" target="_blank" rel="noopener" href="${soegLink(r, kat)}">Søg i Kort</a></div></div>`;
   list.querySelectorAll("[data-stop]").forEach((b) => (b.onclick = () => tilfoejStop(r, steder[Number(b.dataset.stop)], b)));
@@ -182,7 +183,7 @@ async function tilfoejStop(r, s, knap) {
     maal.km = Math.round((r.km * nyKm) / gammelKm);
     maal.min = Math.round((r.min * nyKm) / gammelKm + 3);
     maal.stop = [...maal.stop, stop];
-    delete stedCache[maal.id];
+    Object.keys(stedCache).filter((k) => k.startsWith(maal.id + "|")).forEach((k) => delete stedCache[k]);
     if ((DB.mineRuter || []).some((x) => x.id === maal.id)) save();
     toast(`${stop.navn} er lagt ind som stop`);
     if (maal.id === r.id) renderRute(r.id); else location.hash = "#rute/" + maal.id;

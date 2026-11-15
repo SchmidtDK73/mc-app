@@ -165,13 +165,14 @@ async function renderRute(id) {
       <div style="margin-top:6px">${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}</div>
     </div>
     <div class="btn-row">
-      <button class="btn" id="gpxBtn">Hent GPX</button>
+      <button class="btn" id="gpxBtn">Send til Beeline</button>
       <a class="btn secondary" target="_blank" rel="noopener" href="${mapsLink(r)}">Åbn i Kort</a>
     </div>
     ${r.egen ? `<div class="btn-row">
       ${gemt ? `<button class="btn danger" id="delRouteBtn">Slet rute</button>` : `<button class="btn" id="saveRouteBtn">Gem rute</button>`}
       <a class="btn secondary" href="#ny-rute">Lav en ny</a>
     </div>` : ""}
+    <div class="center-link"><a href="#" id="beelineHelp">Sådan får du ruten over i Beeline · GPX</a></div>
     <div class="btn-row"><button class="btn secondary" id="logTripBtn">Log som tur i dagbogen</button></div>
     <div id="undervejs"></div>
     <div class="section-title">Om ruten</div>
@@ -184,6 +185,7 @@ async function renderRute(id) {
   if ($("#saveRouteBtn")) $("#saveRouteBtn").onclick = () => { gemEgenRute(r); toast("Ruten er gemt under Mine ruter"); renderRute(id); };
   if ($("#delRouteBtn")) $("#delRouteBtn").onclick = () => { if (confirm("Slet denne rute?")) { sletEgenRute(r.id); location.hash = "#ruter"; } };
   $("#gpxBtn").addEventListener("click", () => downloadGpx(r));
+  $("#beelineHelp").addEventListener("click", (e) => { e.preventDefault(); beelineHjaelp(r); });
   $("#logTripBtn").addEventListener("click", () => editTrip(null, r.id));
 
   destroyMap();
@@ -214,7 +216,7 @@ function gpxString(r) {
     <copyright author="OpenStreetMap-bidragydere"><license>https://opendatacommons.org/licenses/odbl/</license></copyright>
   </metadata>
   <wpt lat="${first[0]}" lon="${first[1]}"><name>Start: ${xe(r.start)}</name></wpt>
-  <wpt lat="${last[0]}" lon="${last[1]}"><name>Slut: ${xe(r.slut)}</name></wpt>
+${r.stop.filter((s) => s.pos).map((s) => `  <wpt lat="${s.pos[0]}" lon="${s.pos[1]}"><name>${xe(s.navn)}</name><desc>${xe(s.tekst)}</desc></wpt>\n`).join("")}  <wpt lat="${last[0]}" lon="${last[1]}"><name>Slut: ${xe(r.slut)}</name></wpt>
   <trk>
     <name>${xe(r.navn)}</name>
     <trkseg>
@@ -225,8 +227,30 @@ ${pts}
 `;
 }
 
+function gpxFilnavn(r) {
+  const ren = r.navn.toLowerCase().replace(/æ/g, "ae").replace(/ø/g, "oe").replace(/å/g, "aa").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  return (ren || r.id).slice(0, 60) + ".gpx";
+}
+
+function beelineHjaelp(r) {
+  openSheet(`
+    <h2>Send ruten til Beeline</h2>
+    <ol class="steps">
+      <li>Tryk <b>Send til Beeline</b>. iPhonens delingsark åbner.</li>
+      <li>Vælg <b>Beeline</b> i rækken af apps (tryk <i>Flere</i>, hvis den ikke står der).</li>
+      <li>Vælg importmåden <b>Turn-by-turn</b> og ruttype <b>motorcykel</b>.</li>
+    </ol>
+    <p class="muted">Står Beeline ikke i delingsarket: vælg <b>Gem i Filer</b>. Åbn så Beeline › <b>Plan ride</b> › tandhjulet/Options › <b>Import GPX route</b>, og vælg filen under Gennemse › På min iPhone.</p>
+    <p class="muted">Beeline tilpasser ruten til sit eget kort ("map-matching"), så der kan være små forskelle. Stop du har tilføjet, kommer med som punkter.</p>
+    <button class="btn block" id="sendNu">Send til Beeline nu</button>
+    <button class="btn secondary block" id="lukHjaelp" style="margin-top:8px">Luk</button>`, (s) => {
+    $("#sendNu", s).onclick = () => { closeSheet(); downloadGpx(r); };
+    $("#lukHjaelp", s).onclick = closeSheet;
+  });
+}
+
 async function downloadGpx(r) {
-  const name = r.id + ".gpx";
+  const name = gpxFilnavn(r);
   const blob = new Blob([gpxString(r)], { type: "application/gpx+xml" });
   // På iPhone giver delingsarket mulighed for at gemme i Filer eller åbne i en GPS-app
   try {

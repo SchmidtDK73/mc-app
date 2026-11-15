@@ -24,8 +24,8 @@ Del → "Føj til hjemmeskærm".
 - `ruteplan.js` – "Lav min egen rute": rundtur ud fra start og ønsket længde (OSRM)
 - `data/routes.js` – rutebeskrivelser, stop og kilder
 - `data/geometry.json` – vejforløb (beregnet med OSRM på OpenStreetMap-data)
-- `data/steder.json` – spisesteder, caféer, tankstationer, butikker og toiletter langs de faste ruter (OSM/Overpass)
-- `undervejs.js` – "Find undervejs" og "Tilføj som stop"
+- `undervejs.js` – "Find undervejs" (Geoapify Places API) og "Tilføj som stop"
+- `config.js` – Geoapify API-nøgle (låst til appens adresse hos Geoapify)
 - `sw.js` – offline-cache (app-filer ved installation, kortfliser efterhånden som de vises)
 - `vendor/` – Leaflet 1.9.4
 - `tools/make_icons.py` – genererer ikonerne i `icons/`
