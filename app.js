@@ -156,6 +156,7 @@ async function renderRute(id) {
       <button class="btn" id="gpxBtn">Hent GPX</button>
       <a class="btn secondary" target="_blank" rel="noopener" href="${mapsLink(r)}">Åbn i Kort</a>
     </div>
+    <div class="btn-row"><button class="btn secondary" id="logTripBtn">Log som tur i dagbogen</button></div>
     <div class="section-title">Om ruten</div>
     <div class="card"><p style="margin:0">${esc(r.beskrivelse)}</p></div>
     <div class="section-title">Gode stop</div>
@@ -164,6 +165,7 @@ async function renderRute(id) {
     <div class="card sources"><ul class="stops">${r.kilder.map((k) => `<li><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.navn)}</a></li>`).join("")}</ul></div>
   `;
   $("#gpxBtn").addEventListener("click", () => downloadGpx(r));
+  $("#logTripBtn").addEventListener("click", () => editTrip(null, r.id));
 
   destroyMap();
   map = makeMap($("#map"));
@@ -240,7 +242,9 @@ function defaultData() {
     daek: { forSize: "", bagSize: "", forTryk: "", bagTryk: "", forTrykPas: "", bagTrykPas: "" },
     momenter: [],
     log: [],
-    intervaller: {}
+    intervaller: {},
+    ture: [],
+    pakkelister: null // oprettes med standardlister første gang (se ture.js)
   };
 }
 let DB = Object.assign(defaultData(), lsGet(KEY, {}));
@@ -560,11 +564,13 @@ document.querySelectorAll(".tabbar button").forEach((b) => (b.onclick = () => { 
 function route() {
   closeSheet();
   const h = location.hash.slice(1) || "ruter";
-  const tab = h.startsWith("mc") ? "mc" : "ruter";
+  const tab = ["mc", "vejr", "ture"].find((t) => h === t || h.startsWith(t + "/")) || "ruter";
   document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   view.scrollTop = 0;
   if (h.startsWith("rute/")) renderRute(h.slice(5));
   else if (tab === "mc") renderMC();
+  else if (tab === "vejr") { destroyMap(); renderVejr(); }
+  else if (tab === "ture") { destroyMap(); renderTure(h.split("/").slice(1)); }
   else renderRuter();
 }
 window.addEventListener("hashchange", route);
@@ -573,9 +579,12 @@ function updateOnline() { $("#offlineBadge").classList.toggle("hidden", navigato
 window.addEventListener("online", updateOnline);
 window.addEventListener("offline", updateOnline);
 
-updateOnline();
-updateBadge();
-route();
+// Start når alle scripts (vejr.js, ture.js) er indlæst
+window.addEventListener("DOMContentLoaded", () => {
+  updateOnline();
+  updateBadge();
+  route();
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));

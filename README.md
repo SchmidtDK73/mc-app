@@ -18,13 +18,15 @@ Del → "Føj til hjemmeskærm".
 
 ## Struktur
 
-- `index.html`, `styles.css`, `app.js` – appen (Ruter + Min MC)
+- `index.html`, `styles.css`, `app.js` – appskal, Ruter og Min MC
+- `vejr.js` – "MC-vejr i dag?" (ja/måske/nej) med prognose fra Open-Meteo
+- `ture.js` – kørselsdagbog og pakkelister
 - `data/routes.js` – rutebeskrivelser, stop og kilder
 - `data/geometry.json` – vejforløb (beregnet med OSRM på OpenStreetMap-data)
 - `sw.js` – offline-cache (app-filer ved installation, kortfliser efterhånden som de vises)
 - `vendor/` – Leaflet 1.9.4
 - `tools/make_icons.py` – genererer ikonerne i `icons/`
 
-Min MC-data gemmes i `localStorage` på telefonen. Brug Backup/Gendan i appen for at flytte eller sikre data.
+Min MC, ture og pakkelister gemmes i `localStorage` på telefonen. Brug Backup/Gendan i appen for at flytte eller sikre data.
 
 Når app-filer ændres, så hæv `VERSION` i `sw.js`.
