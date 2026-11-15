@@ -1,5 +1,5 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v3";
+const VERSION = "v4";
 const SHELL = `mcapp-shell-${VERSION}`;
 const TILES = "mcapp-tiles";
 const MAX_TILES = 1500;
@@ -22,7 +22,13 @@ const SHELL_FILES = [
 ];
 
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  // cache: "reload" springer browserens HTTP-cache over (GitHub Pages sender max-age=600),
+  // så en ny version ikke fyldes med gamle filer
+  e.waitUntil(
+    caches.open(SHELL)
+      .then((c) => c.addAll(SHELL_FILES.map((u) => new Request(u, { cache: "reload" }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", (e) => {
@@ -65,7 +71,8 @@ self.addEventListener("fetch", (e) => {
   // Egne filer: net først (så opdateringer slår igennem), cache som reserve offline
   if (url.origin === self.location.origin) {
     e.respondWith(
-      fetch(req)
+      // "no-cache" = spørg altid serveren (billigt 304 hvis uændret)
+      fetch(req.url, { cache: "no-cache", credentials: "same-origin" })
         .then((res) => {
           if (res.ok) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put(req, copy)); }
           return res;
