@@ -292,6 +292,71 @@ function updateBadge() {
   const n = Object.keys(SERVICE_TYPER).map(reminder).filter((r) => r && r.status === "due").length;
   const span = $('.tabbar [data-tab="mc"] span');
   span.textContent = n ? `Min MC (${n})` : "Min MC";
+  // Rødt tal på hjemmeskærmsikonet (iOS 16.4+ når appen er føjet til hjemmeskærm og notifikationer er tilladt)
+  if (badgeSupported() && Notification.permission === "granted") {
+    (n ? navigator.setAppBadge(n) : navigator.clearAppBadge()).catch(() => {});
+  }
+}
+
+function badgeSupported() { return "setAppBadge" in navigator && "Notification" in window; }
+
+async function enableBadge() {
+  try {
+    const p = await Notification.requestPermission();
+    if (p === "granted") { toast("Ikon-badge er slået til"); updateBadge(); renderMC(); }
+    else toast("Tilladelse blev ikke givet – kan ændres under Indstillinger › Notifikationer");
+  } catch { toast("Din telefon understøtter ikke badge"); }
+}
+
+/* ---------- Kalender (.ics) ----------
+   Datobaserede påmindelser lægges i telefonens kalender som heldagsbegivenheder med
+   alarm kl. 9 en uge før og på dagen. Km-baserede kan ikke tidsplanlægges. */
+function addDays(iso, n) { const t = new Date(iso + "T12:00:00"); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); }
+function icsDate(iso) { return iso.replace(/-/g, ""); }
+function icsText(s) { return String(s).replace(/\\/g, "\\\\").replace(/[,;]/g, (c) => "\\" + c).replace(/\n/g, "\\n"); }
+
+function exportCalendar() {
+  const nu = new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z";
+  const imorgen = addDays(today(), 1);
+  const events = [];
+  const kunKm = [];
+  Object.keys(SERVICE_TYPER).forEach((type) => {
+    const r = reminder(type);
+    if (!r || !r.last) return;
+    if (!r.iv.mdr) { if (r.iv.km) kunKm.push(SERVICE_TYPER[type].navn); return; }
+    let dato = addMonths(r.last.dato, r.iv.mdr);
+    if (dato <= today()) dato = imorgen;
+    const slut = addDays(dato, 1);
+    const navn = SERVICE_TYPER[type].navn;
+    const mc = DB.bike.navn ? ` – ${DB.bike.navn}` : "";
+    const kmTekst = r.iv.km && r.last.km !== "" ? ` eller ved ${fmtKm(Number(r.last.km) + r.iv.km)}` : "";
+    events.push([
+      "BEGIN:VEVENT",
+      `UID:mcapp-${type}-${icsDate(dato)}@mc-app`,
+      `DTSTAMP:${nu}`,
+      `DTSTART;VALUE=DATE:${icsDate(dato)}`,
+      `DTEND;VALUE=DATE:${icsDate(slut)}`,
+      `SUMMARY:${icsText(`MC: ${navn}${mc}`)}`,
+      `DESCRIPTION:${icsText(`${navn} forfalder senest ${fmtDate(dato)}${kmTekst}. Sidst udført ${fmtDate(r.last.dato)}.`)}`,
+      "TRANSP:TRANSPARENT",
+      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsText(`${navn} om en uge`)}`, "TRIGGER:-P6DT15H", "END:VALARM",
+      "BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsText(`${navn} forfalder i dag`)}`, "TRIGGER:PT9H", "END:VALARM",
+      "END:VEVENT"
+    ].join("\r\n"));
+  });
+
+  if (!events.length) {
+    toast(kunKm.length ? "Kun km-baserede påmindelser – de vises i appen" : "Registrér først en service med datointerval");
+    return;
+  }
+  const ics = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//MC-app//DA", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", ...events, "END:VCALENDAR", ""].join("\r\n");
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "mc-service.ics";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+  toast(`${events.length} påmindelse${events.length > 1 ? "r" : ""} klar til Kalender`);
 }
 
 function renderMC() {
@@ -328,7 +393,11 @@ function renderMC() {
           <span class="muted" style="font-size:24px">+</span>
         </div>
       </button>`).join("")}
-    <div class="btn-row"><button class="btn secondary" id="intervalBtn">Ret intervaller</button></div>
+    <div class="btn-row">
+      <button class="btn secondary" id="calBtn">Læg i Kalender</button>
+      <button class="btn secondary" id="intervalBtn">Ret intervaller</button>
+    </div>
+    ${badgeSupported() && Notification.permission !== "granted" ? `<div class="btn-row"><button class="btn secondary block" id="badgeBtn">Vis tal på app-ikonet ved forfalden service</button></div>` : ""}
 
     <div class="section-title">Dæk</div>
     <button class="card" id="daekCard">
@@ -381,6 +450,8 @@ function renderMC() {
   $("#momentBtn").onclick = () => editMoment(null);
   $("#daekCard").onclick = editDaek;
   $("#intervalBtn").onclick = editIntervals;
+  $("#calBtn").onclick = exportCalendar;
+  if ($("#badgeBtn")) $("#badgeBtn").onclick = enableBadge;
   $("#bikeBtn").onclick = editBike;
   $("#exportBtn").onclick = exportData;
   $("#importBtn").onclick = () => $("#importFile").click();
