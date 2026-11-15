@@ -161,6 +161,10 @@ async function renderRute(id) {
         <div>Start</div><div>${esc(r.start)}</div>
         <div>Slut</div><div>${esc(r.slut)}</div>
         ${r.region ? `<div>Region</div><div>${esc(r.region)}</div>` : ""}
+        ${r.stats ? `
+          <div>Sving</div><div>${r.stats.sving} °/km ${niveau(r.stats.sving, 40, 80)}</div>
+          ${r.stats.stigning != null ? `<div>Stigning</div><div>${String(r.stats.stigning).replace(".", ",")} m/km ${niveau(r.stats.stigning, 5, 9)}</div>` : ""}
+          <div>Små veje</div><div>${r.stats.smaa} % ${niveau(r.stats.smaa, 40, 65)}</div>` : ""}
       </div>
       <div style="margin-top:6px">${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}</div>
     </div>
@@ -195,6 +199,12 @@ async function renderRute(id) {
   L.circleMarker(r.line[r.line.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#c92a2a", fillOpacity: 1 }).bindTooltip("Slut: " + r.slut).addTo(map);
   map.fitBounds(pl.getBounds(), { padding: [20, 20] });
   initUndervejs(r);
+}
+
+// Lille vurdering ved rutens tal: lav / middel / høj (grænser sat ud fra danske landeveje)
+function niveau(v, middel, hoej) {
+  const [t, c] = v >= hoej ? ["høj", "ok"] : v >= middel ? ["middel", "soon"] : ["lav", "none"];
+  return `<span class="niveau ${c}">${t}</span>`;
 }
 
 function mapsLink(r) {

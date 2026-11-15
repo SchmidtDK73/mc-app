@@ -179,9 +179,9 @@ function visSted(r, s, K, ikon, onStop) {
     ${s.aab ? `<div class="card" style="margin:0 0 10px"><b>Åbningstider</b><div class="muted">${aabningDa(esc(s.aab))}</div></div>` : ""}
     <div class="card" style="margin:0 0 10px">
       <b>Anmeldelser og kontrol</b>
-      <div class="muted" style="margin-bottom:8px">Appen har ikke selv anmeldelser – se dem hos Google eller i Apple Kort.</div>
-      <div class="btn-row" style="margin:0"><a class="btn secondary" target="_blank" rel="noopener" href="${googleLink(s)}">⭐ Google</a>
-        <a class="btn secondary" target="_blank" rel="noopener" href="${kortLink(s)}">Apple Kort</a></div>
+      <div class="muted" style="margin-bottom:8px">Stjerner og anmeldelser åbner i Google Maps eller Apple Kort.</div>
+      <a class="btn review block" target="_blank" rel="noopener" href="${googleLink(s)}">⭐ Se anmeldelser på Google</a>
+      <a class="btn secondary block" style="margin-top:8px" target="_blank" rel="noopener" href="${kortLink(s)}">Vis i Apple Kort</a>
       ${i.smiley ? `<a class="btn secondary block" style="margin-top:8px" target="_blank" rel="noopener" href="https://www.findsmiley.dk/${encodeURIComponent(i.smiley)}">🙂 Fødevarestyrelsens smiley-rapport</a>` : ""}
     </div>
     <div class="btn-row" style="margin:0 0 8px">
@@ -267,7 +267,7 @@ async function visKategori(r, kat, under = "") {
         <span class="muted" style="font-size:22px">›</span>
       </div>
       <div class="btn-row" style="margin:10px 0 0">
-        <a class="btn secondary" target="_blank" rel="noopener" href="${kortLink(s)}">Vis i Kort</a>
+        <a class="btn review" target="_blank" rel="noopener" href="${googleLink(s)}">⭐ Anmeldelser</a>
         <button class="btn secondary" data-stop="${i}">Tilføj som stop</button>
       </div>
     </div>`).join("") + `<p class="muted pad">Data fra <a href="https://www.geoapify.com/" target="_blank" rel="noopener" style="color:var(--accent)">Geoapify</a> og OpenStreetMap – åbningstider kan være forældede.</p>`

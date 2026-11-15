@@ -10,6 +10,12 @@ const OSRM = "https://router.project-osrm.org/route/v1/driving/";
 const PLAN_KEY = "mcapp.plan";
 const RETNINGER = { "": "Tilfældig", N: "Nord", O: "Øst", S: "Syd", V: "Vest" };
 const RETNING_GRADER = { N: 0, O: 90, S: 180, V: 270 };
+const STILE = {
+  "": { navn: "Blandet", ikon: "", tekst: "Den mest direkte rundtur i den ønskede længde." },
+  snoet: { navn: "Snoet", ikon: "〰️", tekst: "Vælger forslaget med flest sving pr. km." },
+  bakket: { navn: "Bakket", ikon: "⛰️", tekst: "Vælger forslaget med mest op og ned (højdedata fra Open-Meteo)." },
+  smaa: { navn: "Små veje", ikon: "🌾", tekst: "Vælger forslaget med mest kørsel på små veje uden rutenummer." }
+};
 let sidstePlan = null; // senest genererede rute (vises før den evt. gemmes)
 
 function findRoute(id) {
@@ -39,10 +45,45 @@ async function osrmRute(punkter) {
   const d = await res.json();
   if (d.code !== "Ok" || !d.routes || !d.routes.length) throw new Error(d.message || "Ingen rute");
   const r = d.routes[0];
-  let eKm = 0;
-  r.legs.forEach((leg) => leg.steps.forEach((s) => { if (/^E\s?\d/.test(s.ref || "")) eKm += s.distance / 1000; }));
+  let eKm = 0, smaaKm = 0;
+  r.legs.forEach((leg) => leg.steps.forEach((s) => {
+    if (/^E\s?\d/.test(s.ref || "")) eKm += s.distance / 1000;
+    if (!s.ref && s.mode !== "ferry") smaaKm += s.distance / 1000;
+  }));
   const line = r.geometry.coordinates.map(([lon, lat]) => [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5]);
-  return { km: r.distance / 1000, min: r.duration / 60, eKm, line };
+  return { km: r.distance / 1000, min: r.duration / 60, eKm, smaa: smaaKm / (r.distance / 1000), line };
+}
+
+// Sving: summen af retningsskift (3–75° pr. knæk, så kryds ikke tæller) i grader pr. km
+function svingPrKm(line) {
+  const kx = 111.32 * Math.cos((line[0][0] * Math.PI) / 180), ky = 110.54;
+  const pts = [line[0]];
+  for (const p of line) { const q = pts[pts.length - 1]; if (Math.hypot((p[1] - q[1]) * kx, (p[0] - q[0]) * ky) > 0.02) pts.push(p); }
+  let sum = 0, km = 0;
+  for (let i = 1; i < pts.length; i++) {
+    km += Math.hypot((pts[i][1] - pts[i - 1][1]) * kx, (pts[i][0] - pts[i - 1][0]) * ky);
+    if (i < 2) continue;
+    const h1 = Math.atan2((pts[i - 1][1] - pts[i - 2][1]) * kx, (pts[i - 1][0] - pts[i - 2][0]) * ky);
+    const h2 = Math.atan2((pts[i][1] - pts[i - 1][1]) * kx, (pts[i][0] - pts[i - 1][0]) * ky);
+    let d = Math.abs(((h2 - h1) * 180) / Math.PI);
+    if (d > 180) d = 360 - d;
+    if (d >= 3 && d <= 75) sum += d;
+  }
+  return km ? sum / km : 0;
+}
+
+// Stigning: samlet opstigning i meter pr. km ud fra 100 højdepunkter langs ruten (Open-Meteo)
+async function stigningPrKm(line, km) {
+  const n = Math.min(100, line.length);
+  const pts = Array.from({ length: n }, (_, i) => line[Math.round((i * (line.length - 1)) / (n - 1))]);
+  const url = `https://api.open-meteo.com/v1/elevation?latitude=${pts.map((p) => p[0].toFixed(4)).join(",")}&longitude=${pts.map((p) => p[1].toFixed(4)).join(",")}`;
+  let res = await fetch(url);
+  if (!res.ok) { await vent(1500); res = await fetch(url); } // ét nyt forsøg ved travlhed
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const h = (await res.json()).elevation || [];
+  let op = 0;
+  for (let i = 1; i < h.length; i++) if (h[i] - h[i - 1] > 0) op += h[i] - h[i - 1];
+  return op / km;
 }
 
 // Andel af ruten der køres to gange (frem og tilbage ad samme vej) – lavere er bedre
@@ -73,26 +114,42 @@ function forenkl(pts, eps) {
 
 const vent = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function lavRute({ start, km, retning }, onProgress) {
-  const varianter = retning === "" ? [0, 1, 2].map(() => Math.random() * 360) : [-25, 0, 25].map((d) => (RETNING_GRADER[retning] + d + 360) % 360);
-  let bedst = null;
+async function lavRute({ start, km, retning, stil = "" }, onProgress) {
+  const antal = stil ? 5 : 3;
+  const varianter = retning === ""
+    ? Array.from({ length: antal }, (_, i) => (Math.random() * 72 + i * 72) % 360)
+    : (stil ? [-35, -15, 0, 15, 35] : [-25, 0, 25]).map((d) => (RETNING_GRADER[retning] + d + 360) % 360);
+  const n = km < 60 ? 3 : km < 150 ? 4 : 5;
+  let radius = km / (2 * Math.PI * 1.3);
+  const kandidater = [];
   for (let v = 0; v < varianter.length; v++) {
     const grader = varianter[v];
-    const n = km < 60 ? 3 : km < 150 ? 4 : 5;
-    let radius = km / (2 * Math.PI * 1.3);
     let res = null;
-    for (let forsoeg = 0; forsoeg < 3; forsoeg++) {
+    for (let forsoeg = 0; forsoeg < (stil ? 2 : 3); forsoeg++) {
       onProgress && onProgress(`Beregner forslag ${v + 1} af ${varianter.length}…`);
       res = await osrmRute([start, ...cirkelPunkter(start, radius, grader, n), start]);
-      if (Math.abs(res.km - km) / km <= 0.1) break;
-      radius *= km / res.km;
+      const afv = Math.abs(res.km - km) / km;
+      radius *= km / res.km; // lær af resultatet – også til de næste forslag
+      if (afv <= 0.1) break;
       await vent(400); // skån den gratis tjeneste
     }
-    const score = Math.abs(res.km - km) / km + res.eKm / res.km * 2 + gentagelse(res.line) * 3;
-    if (!bedst || score < bedst.score) bedst = { ...res, score, grader };
-    if (score < 0.1) break; // godt nok
+    res.grader = grader;
+    res.basis = Math.abs(res.km - km) / km + (res.eKm / res.km) * 2 + gentagelse(res.line) * 3;
+    res.sving = svingPrKm(res.line);
+    if (stil === "bakket") {
+      onProgress && onProgress(`Måler højder på forslag ${v + 1}…`);
+      try { res.stigning = await stigningPrKm(res.line, res.km); } catch { res.stigning = 0; }
+    }
+    kandidater.push(res);
+    if (!stil && res.basis < 0.1) break; // godt nok
     await vent(400);
   }
+  // Vælg: basis (længde, motorvej, frem-og-tilbage) minus bonus for den valgte stil
+  const maal = { snoet: (k) => k.sving, bakket: (k) => k.stigning || 0, smaa: (k) => k.smaa }[stil];
+  const maks = maal ? Math.max(...kandidater.map(maal), 1e-9) : 1;
+  kandidater.forEach((k) => (k.score = k.basis - (maal ? 0.6 * (maal(k) / maks) : 0)));
+  const bedst = kandidater.reduce((a, b) => (b.score < a.score ? b : a));
+  if (bedst.stigning == null) { try { bedst.stigning = await stigningPrKm(bedst.line, bedst.km); } catch { /* vises bare ikke */ } }
   return bedst;
 }
 
@@ -105,7 +162,7 @@ function retningsNavn(grader) {
 function renderPlanner() {
   destroyMap();
   setHeader("Lav min egen rute", true);
-  const p = Object.assign({ by: "Hobro", km: 100, retning: "" }, lsGet(PLAN_KEY, {}));
+  const p = Object.assign({ by: "Hobro", km: 100, retning: "", stil: "" }, lsGet(PLAN_KEY, {}));
   const byer = ["Aars", "Hobro", "Randers"];
   view.innerHTML = `
     <div class="filter-label">Start fra</div>
@@ -128,6 +185,11 @@ function renderPlanner() {
     <div class="chips" id="retChips">
       ${Object.entries(RETNINGER).map(([k, v]) => `<button class="chip ${p.retning === k ? "on" : ""}" data-ret="${k}">${v}</button>`).join("")}
     </div>
+    <div class="filter-label">Type rute</div>
+    <div class="chips" id="stilChips">
+      ${Object.entries(STILE).map(([k, v]) => `<button class="chip ${p.stil === k ? "on" : ""}" data-stil="${k}">${v.ikon ? v.ikon + " " : ""}${v.navn}</button>`).join("")}
+    </div>
+    <div class="pad muted" id="stilTekst" style="padding-top:0;font-size:14px">${STILE[p.stil].tekst}</div>
     <div class="btn-row"><button class="btn block" id="lavBtn">Lav rute</button></div>
     <div id="planStatus" class="pad muted"></div>
     <p class="muted pad">Ruten beregnes på OpenStreetMap-veje og forsøger at undgå motorvej. Kræver internet. Tryk igen for et nyt forslag.</p>
@@ -150,6 +212,12 @@ function renderPlanner() {
     p.retning = b.dataset.ret; gem();
     view.querySelectorAll("#retChips .chip").forEach((c) => c.classList.toggle("on", c === b));
   };
+  $("#stilChips").onclick = (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    p.stil = b.dataset.stil; gem();
+    view.querySelectorAll("#stilChips .chip").forEach((c) => c.classList.toggle("on", c === b));
+    $("#stilTekst").textContent = STILE[p.stil].tekst + (p.stil ? " Tager lidt længere tid, fordi der laves flere forslag." : "");
+  };
   $("#lavBtn").onclick = () => startPlan(p);
 }
 
@@ -169,18 +237,22 @@ async function startPlan(p) {
   try {
     status.textContent = p.by === "pos" ? "Finder din position…" : "";
     const s = await hentStart(p.by);
-    const r = await lavRute({ start: s.punkt, km: p.km, retning: p.retning }, (t) => (status.textContent = t));
+    const r = await lavRute({ start: s.punkt, km: p.km, retning: p.retning, stil: p.stil }, (t) => (status.textContent = t));
     const km = Math.round(r.km);
     const retning = p.retning ? RETNINGER[p.retning].toLowerCase() : retningsNavn(r.grader);
     sidstePlan = {
       id: "egen-" + uid(),
       egen: true,
-      navn: `Rundtur fra ${s.navn === "min position" ? "min position" : s.navn}, ${km} km mod ${retning}`,
+      navn: `${p.stil ? STILE[p.stil].navn + " rundtur" : "Rundtur"} fra ${s.navn === "min position" ? "min position" : s.navn}, ${km} km mod ${retning}`,
       region: "", vejtype: [], start: s.navn === "min position" ? "Min position" : s.navn, slut: "Samme sted (rundtur)",
-      beskrivelse: `Automatisk lavet rundtur på ca. ${km} km mod ${retning}${r.eKm > 1 ? `. Ca. ${Math.round(r.eKm)} km på E-vej/motorvej.` : "."} Tjek ruten på kortet før du kører – den er beregnet automatisk og kender ikke vejarbejde eller lukkede veje.`,
+      beskrivelse: `Automatisk lavet ${p.stil ? STILE[p.stil].navn.toLowerCase() + " " : ""}rundtur på ca. ${km} km mod ${retning}${r.eKm > 1 ? `. Ca. ${Math.round(r.eKm)} km på E-vej/motorvej.` : "."} Tjek ruten på kortet før du kører – den er beregnet automatisk og kender ikke vejarbejde eller lukkede veje.`,
       stop: [], kilder: [],
-      km, min: Math.round(r.min), line: forenkl(r.line, 0.00008), oprettet: today()
+      km, min: Math.round(r.min), line: forenkl(r.line, 0.00008), oprettet: today(),
+      stil: p.stil, stats: { sving: Math.round(r.sving), stigning: r.stigning != null ? Math.round(r.stigning * 10) / 10 : null, smaa: Math.round(r.smaa * 100) }
     };
+    // Ærlig besked hvis området ikke har meget af det ønskede
+    const svag = { bakket: r.stigning != null && r.stigning < 5, snoet: r.sving < 40, smaa: r.smaa < 0.4 }[p.stil];
+    if (svag) sidstePlan.beskrivelse += ` Bemærk: området har ikke meget ${{ bakket: "op og ned", snoet: "snoet vej", smaa: "små veje" }[p.stil]} – dette var det bedste af flere forslag. Prøv evt. en anden retning eller startby.`;
     location.hash = "#rute/" + sidstePlan.id;
   } catch (e) {
     status.textContent = e && e.code === 1 ? "Placering blev ikke tilladt – vælg en by i stedet." : "Kunne ikke lave ruten lige nu. Prøv igen om lidt.";
