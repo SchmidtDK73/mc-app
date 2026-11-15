@@ -203,3 +203,12 @@ a.linkcard { display: block; color: inherit; text-decoration: none; }
 .tabbar span { white-space: nowrap; }
 .check .grow { flex: 1; min-width: 0; }
 .tag.home { background: var(--accent); color: var(--accent-text); }
+
+/* ===== Lav min egen rute ===== */
+.km-value { font-size: 34px; font-weight: 800; text-align: center; }
+.slider { width: 100%; height: 44px; accent-color: var(--accent); }
+.btn:disabled { opacity: .6; }
+
+/* ===== Find undervejs ===== */
+.uv-pin { font-size: 20px; line-height: 30px; text-align: center; background: var(--card); border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.uv-ikon { font-size: 26px; width: 36px; text-align: center; flex: none; }

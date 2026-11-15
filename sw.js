@@ -1,5 +1,5 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v5";
+const VERSION = "v7";
 const SHELL = `mcapp-shell-${VERSION}`;
 const TILES = "mcapp-tiles";
 const MAX_TILES = 1500;
@@ -11,6 +11,8 @@ const SHELL_FILES = [
   "app.js",
   "vejr.js",
   "ture.js",
+  "ruteplan.js",
+  "undervejs.js",
   "data/routes.js",
   "data/geometry.json",
   "vendor/leaflet.js",

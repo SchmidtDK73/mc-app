@@ -16,7 +16,8 @@ function pakkelister() {
   return DB.pakkelister;
 }
 
-function routeName(id) { const r = ROUTES.find((x) => x.id === id); return r ? r.navn : ""; }
+function routeName(id) { const r = findRoute(id); return r ? r.navn : ""; }
+function alleRuter() { return [...(DB.mineRuter || []), ...ROUTES]; }
 
 function segment(active) {
   return `<div class="segment">
@@ -66,7 +67,7 @@ function renderDagbog() {
 }
 
 function editTrip(trip, routeId) {
-  const r = routeId ? ROUTES.find((x) => x.id === routeId) : null;
+  const r = routeId ? findRoute(routeId) : null;
   const t = trip || { dato: today(), titel: "", rute: routeId || "", km: r && r.km ? r.km : "", odo: "", noter: "" };
   openSheet(`
     <h2>${trip ? "Ret tur" : "Ny tur"}</h2>
@@ -74,7 +75,7 @@ function editTrip(trip, routeId) {
       <label class="field">Dato<input name="dato" type="date" value="${esc(t.dato)}" required></label>
       <label class="field">Titel<input name="titel" placeholder="Fx Søndagstur med Peter" value="${esc(t.titel)}"></label>
       <label class="field">Rute (valgfri)
-        <select name="rute"><option value="">– Ingen –</option>${ROUTES.map((x) => `<option value="${x.id}" ${x.id === t.rute ? "selected" : ""}>${esc(x.navn)}</option>`).join("")}</select>
+        <select name="rute"><option value="">– Ingen –</option>${(r && r.egen && !alleRuter().includes(r) ? [r, ...alleRuter()] : alleRuter()).map((x) => `<option value="${x.id}" ${x.id === t.rute ? "selected" : ""}>${esc(x.navn)}</option>`).join("")}</select>
       </label>
       <div class="grid2">
         <label class="field">Km kørt<input name="km" type="number" inputmode="decimal" min="0" step="any" value="${esc(t.km)}" required></label>
@@ -86,7 +87,7 @@ function editTrip(trip, routeId) {
     </form>`, (s) => {
     const f = $("#f", s);
     // Når man vælger en rute, foreslås rutens længde hvis km er tom
-    f.rute.onchange = () => { const x = ROUTES.find((y) => y.id === f.rute.value); if (x && x.km && !f.km.value) f.km.value = x.km; };
+    f.rute.onchange = () => { const x = findRoute(f.rute.value); if (x && x.km && !f.km.value) f.km.value = x.km; };
     f.onsubmit = (ev) => {
       ev.preventDefault();
       const d = formData(f);
@@ -106,7 +107,7 @@ function editTrip(trip, routeId) {
     };
   });
   // Ruteoversigten loader geometri asynkront; sikr at km-forslag findes
-  if (routeId && !r?.km) loadGeometry().then(() => { const f = $("#f"); const x = ROUTES.find((y) => y.id === routeId); if (f && x && !f.km.value) f.km.value = x.km; });
+  if (routeId && !r?.km) loadGeometry().then(() => { const f = $("#f"); const x = findRoute(routeId); if (f && x && !f.km.value) f.km.value = x.km; });
 }
 
 /* ---------- Pakkelister ---------- */

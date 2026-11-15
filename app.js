@@ -92,8 +92,16 @@ async function renderRuter() {
   await loadGeometry();
   const regions = Object.fromEntries([...new Set(ROUTES.map((r) => r.region))].sort().map((r) => [r, r]));
   const list = filtered();
+  const mine = DB.mineRuter || [];
   view.innerHTML = `
     <div id="map" class="map"></div>
+    <div class="btn-row"><a class="btn block" href="#ny-rute">＋ Lav min egen rute</a></div>
+    ${mine.length ? `<div class="section-title">Mine ruter</div>
+    ${mine.map((r) => `
+      <a class="card linkcard" href="#rute/${r.id}">
+        <div class="row"><div class="grow"><b>${esc(r.navn)}</b><div class="muted">${r.km} km · ca. ${fmtTid(r.min)} · gemt ${fmtDate(r.oprettet)}</div></div>
+        <span class="muted" style="font-size:22px">›</span></div>
+      </a>`).join("")}` : ""}
     <div class="filter-label">Rundtur fra</div>${chipRow("hjem", { Aars: "Aars", Hobro: "Hobro", Randers: "Randers" }, "Alle")}
     <div class="filter-label">Region</div>${chipRow("region", regions, "Hele landet")}
     <div class="filter-label">Længde</div>${chipRow("laengde", LAENGDER, "Alle")}
@@ -139,18 +147,20 @@ async function renderRuter() {
 
 async function renderRute(id) {
   await loadGeometry();
-  const r = ROUTES.find((x) => x.id === id);
+  const r = findRoute(id);
   if (!r) { location.hash = "#ruter"; return; }
-  setHeader(r.navn, true);
+  setHeader(r.egen ? "Min rute" : r.navn, true);
+  const gemt = r.egen && (DB.mineRuter || []).some((x) => x.id === r.id);
   view.innerHTML = `
     <div id="map" class="map small"></div>
+    ${r.egen ? `<div class="pad" style="padding-bottom:4px"><b>${esc(r.navn)}</b></div>` : ""}
     <div class="card">
       <div class="kv">
         <div>Længde</div><div>${r.km} km</div>
         <div>Køretid (uden stop)</div><div>ca. ${fmtTid(r.min)}</div>
         <div>Start</div><div>${esc(r.start)}</div>
         <div>Slut</div><div>${esc(r.slut)}</div>
-        <div>Region</div><div>${esc(r.region)}</div>
+        ${r.region ? `<div>Region</div><div>${esc(r.region)}</div>` : ""}
       </div>
       <div style="margin-top:6px">${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}</div>
     </div>
@@ -158,14 +168,21 @@ async function renderRute(id) {
       <button class="btn" id="gpxBtn">Hent GPX</button>
       <a class="btn secondary" target="_blank" rel="noopener" href="${mapsLink(r)}">Åbn i Kort</a>
     </div>
+    ${r.egen ? `<div class="btn-row">
+      ${gemt ? `<button class="btn danger" id="delRouteBtn">Slet rute</button>` : `<button class="btn" id="saveRouteBtn">Gem rute</button>`}
+      <a class="btn secondary" href="#ny-rute">Lav en ny</a>
+    </div>` : ""}
     <div class="btn-row"><button class="btn secondary" id="logTripBtn">Log som tur i dagbogen</button></div>
+    <div id="undervejs"></div>
     <div class="section-title">Om ruten</div>
     <div class="card"><p style="margin:0">${esc(r.beskrivelse)}</p></div>
-    <div class="section-title">Gode stop</div>
-    <div class="card"><ul class="stops">${r.stop.map((s) => `<li><b>${esc(s.navn)}</b><span class="muted">${esc(s.tekst)}</span></li>`).join("")}</ul></div>
-    <div class="section-title">Kilder</div>
-    <div class="card sources"><ul class="stops">${r.kilder.map((k) => `<li><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.navn)}</a></li>`).join("")}</ul></div>
+    ${r.stop.length ? `<div class="section-title">Gode stop</div>
+    <div class="card"><ul class="stops">${r.stop.map((s) => `<li><b>${esc(s.navn)}</b><span class="muted">${esc(s.tekst)}</span></li>`).join("")}</ul></div>` : ""}
+    ${r.kilder.length ? `<div class="section-title">Kilder</div>
+    <div class="card sources"><ul class="stops">${r.kilder.map((k) => `<li><a href="${esc(k.url)}" target="_blank" rel="noopener">${esc(k.navn)}</a></li>`).join("")}</ul></div>` : ""}
   `;
+  if ($("#saveRouteBtn")) $("#saveRouteBtn").onclick = () => { gemEgenRute(r); toast("Ruten er gemt under Mine ruter"); renderRute(id); };
+  if ($("#delRouteBtn")) $("#delRouteBtn").onclick = () => { if (confirm("Slet denne rute?")) { sletEgenRute(r.id); location.hash = "#ruter"; } };
   $("#gpxBtn").addEventListener("click", () => downloadGpx(r));
   $("#logTripBtn").addEventListener("click", () => editTrip(null, r.id));
 
@@ -175,6 +192,7 @@ async function renderRute(id) {
   L.circleMarker(r.line[0], { radius: 8, color: "#fff", weight: 3, fillColor: "#2f9e44", fillOpacity: 1 }).bindTooltip("Start: " + r.start).addTo(map);
   L.circleMarker(r.line[r.line.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#c92a2a", fillOpacity: 1 }).bindTooltip("Slut: " + r.slut).addTo(map);
   map.fitBounds(pl.getBounds(), { padding: [20, 20] });
+  initUndervejs(r);
 }
 
 function mapsLink(r) {
@@ -246,6 +264,7 @@ function defaultData() {
     log: [],
     intervaller: {},
     ture: [],
+    mineRuter: [],
     pakkelister: null // oprettes med standardlister første gang (se ture.js)
   };
 }
@@ -640,7 +659,8 @@ function route() {
   const tab = ["mc", "vejr", "ture"].find((t) => h === t || h.startsWith(t + "/")) || "ruter";
   document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   view.scrollTop = 0;
-  if (h.startsWith("rute/")) renderRute(h.slice(5));
+  if (h === "ny-rute") renderPlanner();
+  else if (h.startsWith("rute/")) renderRute(h.slice(5));
   else if (tab === "mc") renderMC();
   else if (tab === "vejr") { destroyMap(); renderVejr(); }
   else if (tab === "ture") { destroyMap(); renderTure(h.split("/").slice(1)); }
