@@ -69,14 +69,12 @@ function fmtTid(min) { const h = Math.floor(min / 60), m = min % 60; return h ? 
 let map = null;
 function destroyMap() { if (map) { map.remove(); map = null; } }
 
-// Kortbilleder fra Mapbox (terrænkort i lyst tema, mørkt kort i mørkt tema). Uden nøgle: OpenStreetMap.
-// Nøglen er låst til appens adresse, så hele adressen sendes som referer.
+// Kortbilleder fra Mapbox' gadekort med tydelige bynavne og vejnumre (samme kort i lyst og mørkt tema).
+// Uden nøgle: OpenStreetMap. Nøglen er låst til appens adresse, så hele adressen sendes som referer.
 function kortLag() {
   const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
   if (!window.MAPBOX_TOKEN) return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: osm });
-  const moerk = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches;
-  const stil = moerk ? "dark-v11" : "outdoors-v12";
-  return L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/${stil}/tiles/256/{z}/{x}/{y}@2x?access_token=${window.MAPBOX_TOKEN}`, {
+  return L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${window.MAPBOX_TOKEN}`, {
     maxZoom: 19,
     referrerPolicy: "no-referrer-when-downgrade",
     attribution: '&copy; <a href="https://www.mapbox.com/about/maps/">Mapbox</a> ' + osm
