@@ -2,11 +2,12 @@
 /* ===================== Lav min egen rute =====================
    Vælg start og ønsket længde → appen lægger en rundtur.
    Metode: punkter lægges på en cirkel der går gennem startpunktet; ruten beregnes
-   på rigtige veje med OSRM (OpenStreetMap). Cirklens størrelse justeres indtil
+   på rigtige veje med Mapbox (eller OSRM som reserve). Cirklens størrelse justeres indtil
    længden passer (±10 %). Der prøves nogle varianter, og den med færrest km på
    E-veje (motorvej) og mindst "frem og tilbage" vælges. */
 
 const OSRM = "https://router.project-osrm.org/route/v1/driving/";
+const MAPBOX = "https://api.mapbox.com/directions/v5/mapbox/driving/";
 const PLAN_KEY = "mcapp.plan";
 const RETNINGER = { "": "Tilfældig", N: "Nord", O: "Øst", S: "Syd", V: "Vest" };
 const RETNING_GRADER = { N: 0, O: 90, S: 180, V: 270 };
@@ -38,11 +39,25 @@ function cirkelPunkter(start, radius, retning, n) {
   return pts;
 }
 
+// Ruteberegning: Mapbox når der er en nøgle i config.js, ellers (eller ved fejl) OSRM's demo-server.
+// Begge svarer i samme format.
+// Mapbox-nøglen er låst til https://schmidtdk73.github.io/mc-app/, så hele adressen skal sendes som referer
+// (browsere sender ellers kun domænet).
+async function hentRute(base, coords, ekstra) {
+  const res = await fetch(`${base}${coords}?overview=full&geometries=geojson&steps=true${ekstra}`,
+    { referrerPolicy: "no-referrer-when-downgrade" });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
 async function osrmRute(punkter) {
   const coords = punkter.map(([lat, lon]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";");
-  const res = await fetch(`${OSRM}${coords}?overview=full&geometries=geojson&steps=true`);
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const d = await res.json();
+  let d;
+  if (window.MAPBOX_TOKEN) {
+    try { d = await hentRute(MAPBOX, coords, "&access_token=" + window.MAPBOX_TOKEN); }
+    catch (e) { console.warn("Mapbox fejlede, bruger OSRM", e); }
+  }
+  if (!d || d.code !== "Ok") d = await hentRute(OSRM, coords, "");
   if (d.code !== "Ok" || !d.routes || !d.routes.length) throw new Error(d.message || "Ingen rute");
   const r = d.routes[0];
   let eKm = 0, smaaKm = 0;
