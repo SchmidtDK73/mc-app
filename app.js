@@ -211,7 +211,7 @@ async function renderRute(id) {
       <a class="btn secondary" href="#ny-rute">Lav en ny</a>
     </div>` : ""}
     <div class="btn-row"><button class="btn secondary" id="gpxEksportBtn">⬇︎ Eksportér GPX-fil</button></div>
-    <div class="center-link"><a href="#" id="beelineHelp">Sådan får du ruten over i Beeline · GPX</a></div>
+    <div class="center-link"><a href="#" id="beelineHelp">Hvorfor står Beeline ikke i delingsarket?</a></div>
     <div class="btn-row">
       <button class="btn" id="optagBtn">▶︎ Kør turen med GPS</button>
       <button class="btn secondary" id="logTripBtn">Log tur i dagbogen</button>
@@ -226,7 +226,7 @@ async function renderRute(id) {
   `;
   if ($("#saveRouteBtn")) $("#saveRouteBtn").onclick = () => { gemEgenRute(r); toast("Ruten er gemt under Mine ruter"); renderRute(id); };
   if ($("#delRouteBtn")) $("#delRouteBtn").onclick = () => { if (confirm("Slet denne rute?")) { sletEgenRute(r.id); location.hash = "#ruter"; } };
-  $("#gpxBtn").addEventListener("click", () => downloadGpx(r));
+  $("#gpxBtn").addEventListener("click", () => beelineHjaelp(r));
   // Samme fil – på iPhone åbner delingsarket, hvor "Gem i Filer" eller en anden GPS-app kan vælges
   $("#gpxEksportBtn").addEventListener("click", () => downloadGpx(r));
   $("#beelineHelp").addEventListener("click", (e) => { e.preventDefault(); beelineHjaelp(r); });
@@ -343,19 +343,21 @@ function gpxFilnavn(r) {
   return (ren || r.id).slice(0, 60) + ".gpx";
 }
 
+// iPhonens delingsark viser ikke Beeline (eller Garmin/Komoot) for GPX-filer fra en webside – en fejl i iOS siden
+// version 17 (WebKit bug 261498). Derfor: gem filen i Filer først, og importér den derfra i Beeline.
 function beelineHjaelp(r) {
   openSheet(`
     <h2>Send ruten til Beeline</h2>
+    <p class="muted" style="margin-top:0">iPhonen viser desværre ikke Beeline, når en webapp deler en GPX-fil (en fejl i iOS). Det klares i to trin:</p>
     <ol class="steps">
-      <li>Tryk <b>Send til Beeline</b>. iPhonens delingsark åbner.</li>
-      <li>Vælg <b>Beeline</b> i rækken af apps (tryk <i>Flere</i>, hvis den ikke står der).</li>
-      <li>Vælg importmåden <b>Turn-by-turn</b> og ruttype <b>motorcykel</b>.</li>
+      <li><b>Gem filen:</b> tryk på knappen herunder og vælg <b>Gem i Filer</b> › <b>På min iPhone</b> › <b>Gem</b>.</li>
+      <li><b>Åbn Beeline</b> › <b>Plan ride</b> › tandhjulet › vælg <b>motorcykel</b> › <b>Import GPX route</b>. Vælg filen under Gennemse › På min iPhone, og vælg <b>Turn-by-turn</b>.</li>
     </ol>
-    <p class="muted">Står Beeline ikke i delingsarket: vælg <b>Gem i Filer</b>. Åbn så Beeline › <b>Plan ride</b> › tandhjulet/Options › <b>Import GPX route</b>, og vælg filen under Gennemse › På min iPhone.</p>
-    <p class="muted">Beeline tilpasser ruten til sit eget kort ("map-matching"), så der kan være små forskelle. Stop du har tilføjet, kommer med som punkter.</p>
-    <button class="btn block" id="sendNu">Send til Beeline nu</button>
+    <p class="muted">Du kan også prøve fra appen <b>Filer</b>: hold fingeren på filen › <b>Del</b> › <b>Beeline</b>. Det afhænger af Beeline-appen, om den står der.</p>
+    <p class="muted">Filen hedder <b>${esc(gpxFilnavn(r))}</b>. Beeline tilpasser ruten til sit eget kort, så der kan være små forskelle.</p>
+    <button class="btn block" id="sendNu">1. Gem GPX-fil</button>
     <button class="btn secondary block" id="lukHjaelp" style="margin-top:8px">Luk</button>`, (s) => {
-    $("#sendNu", s).onclick = () => { closeSheet(); downloadGpx(r); };
+    $("#sendNu", s).onclick = () => downloadGpx(r);
     $("#lukHjaelp", s).onclick = closeSheet;
   });
 }
