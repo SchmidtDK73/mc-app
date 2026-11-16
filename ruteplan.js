@@ -166,7 +166,8 @@ async function osrmRute(punkter, underlag = "", undgaa = {}) {
   const exclude = valgteUndgaa(undgaa).map((k) => UNDGAA[k].mapbox).concat(underlag === "asfalt" ? ["unpaved"] : []);
   const coords = punkter.map(([lat, lon]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";");
   let d;
-  if (window.MAPBOX_TOKEN) {
+  if (window.MAPBOX_TOKEN && (await mapboxForbrug()).ruter < MAPBOX_LOFT.ruter) {
+    mapboxForbrug("ruter");
     try { d = await hentRute(MAPBOX, coords, (exclude.length ? "&exclude=" + exclude.join(",") : "") + "&access_token=" + window.MAPBOX_TOKEN); }
     catch (e) { console.warn("Mapbox fejlede, bruger reserve", e); }
   }
@@ -354,6 +355,7 @@ function renderPlanner() {
     </div>
     <div class="btn-row"><button class="btn block" id="lavBtn">Lav rute</button></div>
     <div id="planStatus" class="pad muted"></div>
+    <p class="muted pad" id="mbForbrug"></p>
     <p class="muted pad">Ruten beregnes på OpenStreetMap-veje og foretrækker veje uden motorvej – vælg "Undgå" ovenfor for at udelukke motorvej, betalingsveje eller færger helt. Grusveje vælges kun, hvor motorcykler har adgang ifølge kortdata – skilte som "Privat vej" eller "Kun landbrugskørsel" gælder altid. Kræver internet. Tryk igen for et nyt forslag.</p>
   `;
   const gem = () => lsSet(PLAN_KEY, p);
@@ -399,6 +401,15 @@ function renderPlanner() {
     view.querySelectorAll("#omraadeChips .chip").forEach((c) => c.classList.toggle("on", c === b));
   };
   $("#lavBtn").onclick = () => startPlan(p);
+  visMapboxForbrug();
+}
+
+async function visMapboxForbrug() {
+  const el = $("#mbForbrug"); if (!el || !window.MAPBOX_TOKEN) return;
+  const d = await mapboxForbrug(), tal = (n) => n.toLocaleString("da-DK");
+  const over = d.fliser >= MAPBOX_LOFT.fliser || d.ruter >= MAPBOX_LOFT.ruter;
+  el.textContent = `Mapbox denne måned på denne telefon: ${tal(d.fliser)} af ${tal(MAPBOX_LOFT.fliser)} kortbilleder og ${tal(d.ruter)} af ${tal(MAPBOX_LOFT.ruter)} ruteberegninger. ` +
+    (over ? "Loftet er nået – appen bruger nu gratis kort og ruteberegning resten af måneden." : "Når loftet nås, skifter appen selv til gratis kort og ruteberegning, så du ikke kommer over Mapbox' gratis grænse.");
 }
 
 async function hentStart(by) {

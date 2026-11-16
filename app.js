@@ -69,11 +69,29 @@ function fmtTid(min) { const h = Math.floor(min / 60), m = min % 60; return h ? 
 let map = null;
 function destroyMap() { if (typeof stopPosition === "function") stopPosition(); if (map) { map.remove(); map = null; } }
 
+/* ---------- Værn mod Mapbox-regning ----------
+   Mapbox har intet udgiftsloft, så appen holder selv sit forbrug (pr. telefon, pr. måned) langt under
+   Mapbox' gratis grænse (ca. 200.000 kortbilleder og 100.000 ruteberegninger). Over loftet bruges gratis
+   kort (OpenStreetMap) og gratis ruteberegning (Valhalla/OSRM). Tælleren deles med sw.js. */
+const MAPBOX_LOFT = { fliser: 20000, ruter: 3000 };
+async function mapboxForbrug(felt) {
+  let d = { maaned: new Date().toISOString().slice(0, 7), fliser: 0, ruter: 0 };
+  try {
+    const c = await caches.open("mcapp-forbrug");
+    const r = await c.match("/__mapbox-forbrug");
+    if (r) { const x = await r.json(); if (x.maaned === d.maaned) d = Object.assign(d, x); }
+    if (felt) { d[felt]++; await c.put("/__mapbox-forbrug", new Response(JSON.stringify(d), { headers: { "Content-Type": "application/json" } })); }
+  } catch { /* fx privat browsing: så tælles der ikke */ }
+  lsSet("mcapp.mbforbrug", d);
+  return d;
+}
+const mapboxOverLoft = (felt) => { const d = lsGet("mcapp.mbforbrug", {}); return d.maaned === new Date().toISOString().slice(0, 7) && d[felt] >= MAPBOX_LOFT[felt]; };
+
 // Kortbilleder fra Mapbox' gadekort med tydelige bynavne og vejnumre (samme kort i lyst og mørkt tema).
 // Uden nøgle: OpenStreetMap. Nøglen er låst til appens adresse, så hele adressen sendes som referer.
 function kortLag() {
   const osm = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-  if (!window.MAPBOX_TOKEN) return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: osm });
+  if (!window.MAPBOX_TOKEN || mapboxOverLoft("fliser")) return L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 18, attribution: osm });
   return L.tileLayer(`https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/256/{z}/{x}/{y}@2x?access_token=${window.MAPBOX_TOKEN}`, {
     maxZoom: 19,
     referrerPolicy: "no-referrer-when-downgrade",
@@ -463,6 +481,7 @@ window.addEventListener("offline", updateOnline);
 // Start når alle scripts (vejr.js, ture.js) er indlæst
 window.addEventListener("DOMContentLoaded", () => {
   updateOnline();
+  if (window.MAPBOX_TOKEN) mapboxForbrug(); // opdater loft-status til kortene
   // Fjern et evt. tal på app-ikonet fra den tidligere servicepåmindelse
   if ("clearAppBadge" in navigator) navigator.clearAppBadge().catch(() => {});
   route();

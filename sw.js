@@ -1,8 +1,23 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v31";
+const VERSION = "v32";
 const SHELL = `mcapp-shell-${VERSION}`;
 const TILES = "mcapp-tiles-2"; // nyt navn: smider evt. afviste Mapbox-fliser fra v18/v19 ud
 const MAX_TILES = 1500;
+
+// Værn mod Mapbox-regning: kortbilleder hentet fra Mapbox tælles pr. måned (på denne telefon).
+// Over loftet hentes samme kortbillede gratis fra OpenStreetMap i stedet. Mapbox' gratis grænse er
+// ca. 200.000 kortbilleder om måneden; loftet er sat til 10 % af det. Samme tæller bruges af appen (app.js).
+const FORBRUG = "mcapp-forbrug", FORBRUG_URL = "/__mapbox-forbrug";
+const LOFT_FLISER = 20000;
+let forbrugKoe = Promise.resolve();
+async function forbrug(felt) {
+  const c = await caches.open(FORBRUG), m = new Date().toISOString().slice(0, 7);
+  let d = { maaned: m, fliser: 0, ruter: 0 };
+  try { const r = await c.match(FORBRUG_URL); if (r) { const x = await r.json(); if (x.maaned === m) d = Object.assign(d, x); } } catch { /* tom */ }
+  if (felt) { d[felt]++; await c.put(FORBRUG_URL, new Response(JSON.stringify(d), { headers: { "Content-Type": "application/json" } })); }
+  return d;
+}
+const taelFlise = () => (forbrugKoe = forbrugKoe.then(() => forbrug("fliser")).catch(() => {}));
 
 const SHELL_FILES = [
   "./",
@@ -62,12 +77,25 @@ self.addEventListener("fetch", (e) => {
         const hit = await c.match(req);
         if (hit) return hit;
         try {
+          if (url.hostname === "api.mapbox.com" && (await forbrug()).fliser >= LOFT_FLISER) {
+            // Over loftet: samme flise fra OpenStreetMap (gratis), gemt under OSM-adressen
+            const z = url.pathname.match(/\/(\d+)\/(\d+)\/(\d+)(@2x)?$/);
+            if (z) {
+              const osm = new Request(`https://tile.openstreetmap.org/${z[1]}/${z[2]}/${z[3]}.png`);
+              const gemt = await c.match(osm);
+              if (gemt) return gemt;
+              const r = await fetch(osm);
+              if (r.ok || r.type === "opaque") c.put(osm, r.clone());
+              return r;
+            }
+          }
           // Mapbox-nøglen er låst til appens adresse. Nogle mobilbrowsere sender ikke adressen med på
           // billeder, så service workeren henter selv flisen med hele adressen som referer (og CORS,
           // så en afvisning kan ses og ikke bliver gemt).
           const res = url.hostname === "api.mapbox.com"
             ? await fetch(req.url, { mode: "cors", credentials: "omit", referrer: self.registration.scope, referrerPolicy: "no-referrer-when-downgrade" })
             : await fetch(req);
+          if (url.hostname === "api.mapbox.com") taelFlise();
           if (res.ok || res.type === "opaque") { c.put(req, res.clone()); trimTiles(); }
           return res;
         } catch {
