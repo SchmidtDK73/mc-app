@@ -270,3 +270,119 @@ ol.steps li { margin-bottom: 8px; }
 .pos-knap.aktiv { color: #1c7ed6; }
 .pos-knap.foelg { background: #1c7ed6; color: #fff; }
 .optag-maerke { margin-left: auto; border: 0; border-radius: 999px; padding: 6px 12px; font: inherit; font-size: 13px; font-weight: 700; background: var(--accent2); color: #fff; }
+
+/* =====================================================================
+   iOS 27-udseende ("Liquid Glass"): systemfarver og SF-skrift, svævende glasflader
+   (topbjælke, fanebjælke, knapper, chips, ark og kortknapper), større titel og
+   iOS-lister uden tunge skygger. Ligger sidst, så det overskriver det ovenfor.
+   ===================================================================== */
+:root {
+  --bg: #f2f2f7;
+  --bg2: #e5e5ea;
+  --card: #ffffff;
+  --text: #000000;
+  --muted: #6e6e73;
+  --line: rgba(60, 60, 67, .14);
+  --accent: #f26322;
+  --accent2: #e0352b;
+  --grad: var(--accent);
+  --chip: rgba(118, 118, 128, .12);
+  --ok: #34c759; --warn: #ff9f0a; --bad: #ff3b30;
+  --glass: rgba(255, 255, 255, .62);
+  --glass-strong: rgba(255, 255, 255, .82);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, .85), inset 0 0 0 .5px rgba(255, 255, 255, .6), 0 0 0 .5px rgba(0, 0, 0, .06);
+  --glass-shadow: 0 8px 28px rgba(0, 0, 0, .12), 0 1px 3px rgba(0, 0, 0, .06);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  --shadow-lg: var(--glass-shadow);
+  --r: 26px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000000;
+    --bg2: #1c1c1e;
+    --card: #1c1c1e;
+    --text: #ffffff;
+    --muted: #98989f;
+    --line: rgba(84, 84, 88, .55);
+    --accent: #ff7a3d;
+    --chip: rgba(118, 118, 128, .24);
+    --ok: #30d158; --warn: #ffd60a; --bad: #ff453a;
+    --glass: rgba(44, 44, 46, .55);
+    --glass-strong: rgba(44, 44, 46, .82);
+    --glass-edge: inset 0 1px 0 rgba(255, 255, 255, .14), inset 0 0 0 .5px rgba(255, 255, 255, .12), 0 0 0 .5px rgba(0, 0, 0, .5);
+    --glass-shadow: 0 8px 30px rgba(0, 0, 0, .55);
+    --shadow: none;
+  }
+}
+body { font-family: -apple-system, "SF Pro Text", system-ui, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; letter-spacing: -.01em; }
+
+/* Glasmateriale */
+.topbar, .tabbar, .chip, .back, .segment, .sheet, .fab, .pos-knap, .leaflet-bar, .toast, .btn.secondary {
+  -webkit-backdrop-filter: blur(24px) saturate(190%); backdrop-filter: blur(24px) saturate(190%);
+}
+
+/* Topbjælke: glas uden streg, stor fed titel */
+.topbar { background: var(--glass); border-bottom: 0; box-shadow: 0 .5px 0 var(--line); padding-top: calc(var(--safe-t) + 8px); }
+.topbar h1 { font-size: 28px; font-weight: 700; letter-spacing: -.025em; }
+.back { background: var(--glass-strong); box-shadow: var(--glass-edge), var(--glass-shadow); width: 40px; height: 40px; font-size: 28px; color: var(--text); }
+
+/* Fanebjælke: svævende glaskapsel, valgt fane som tydelig tonet glasdråbe */
+.tabbar { background: var(--glass); border: 0; box-shadow: var(--glass-edge), var(--glass-shadow); padding: 5px; left: 20px; right: 20px; bottom: calc(8px + var(--safe-b)); }
+.tabbar button { color: var(--text); font-size: 10.5px; font-weight: 600; min-height: 54px; }
+.tabbar button.active { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, var(--glass-strong)); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* Lister og kort: iOS-grupperede flader, ingen tunge skygger */
+.card { border-radius: var(--r); box-shadow: var(--shadow); }
+.section-title { text-transform: none; letter-spacing: -.01em; font-size: 20px; font-weight: 700; color: var(--text); margin: 26px 20px 8px; }
+.filter-label { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--muted); margin: 14px 20px 2px; }
+.map { border-radius: var(--r); box-shadow: none; }
+.kv div:nth-child(even) { font-weight: 600; }
+
+/* Chips: glaskapsler, valgt = tonet */
+.chip { background: var(--glass-strong); box-shadow: var(--glass-edge); font-weight: 500; color: var(--text); }
+.chip.on { background: var(--accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 4px 12px color-mix(in srgb, var(--accent) 35%, transparent); }
+.tag { background: var(--chip); font-weight: 500; }
+
+/* Knapper: hovedknap = tonet glas (ensfarvet med lys kant), sekundær = klart glas */
+.btn { background: var(--accent); font-weight: 600; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35), 0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent); }
+.btn.secondary { background: var(--glass-strong); color: var(--text); box-shadow: var(--glass-edge); }
+.btn.danger { background: transparent; box-shadow: none; }
+.btn:active, .chip:active { transform: scale(.96); }
+.center-link a, .sources a { color: var(--accent); }
+
+/* Segmentvælger: glasspor med glasdråbe */
+.segment { background: var(--chip); padding: 3px; }
+.segment a { font-weight: 500; color: var(--text); }
+.segment a.on { background: var(--glass-strong); color: var(--text); font-weight: 600; box-shadow: var(--glass-edge), 0 2px 8px rgba(0, 0, 0, .08); }
+
+/* Ark nedefra: glas med store runde hjørner */
+.sheet { background: var(--glass-strong); border-radius: 36px; box-shadow: var(--glass-edge), var(--glass-shadow); left: 6px; right: 6px; bottom: 6px; }
+.sheet .card { background: color-mix(in srgb, var(--card) 70%, transparent); }
+.sheet::before { background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.sheet-backdrop { background: rgba(0, 0, 0, .25); }
+label.field input, label.field select, label.field textarea { background: var(--chip); border-radius: 16px; }
+.sheet label.field input, .sheet label.field select, .sheet label.field textarea { background: color-mix(in srgb, var(--card) 75%, transparent); }
+label.field input:focus, label.field select:focus, label.field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+.add-row input { background: var(--card); box-shadow: none; }
+
+/* Svævende +, toast og kortknapper i glas */
+.fab { background: var(--accent); font-weight: 300; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .4), 0 8px 22px color-mix(in srgb, var(--accent) 40%, transparent); bottom: calc(90px + var(--safe-b)); }
+.toast { background: var(--glass-strong); color: var(--text); box-shadow: var(--glass-edge), var(--glass-shadow); }
+.leaflet-bar { border-radius: 18px !important; box-shadow: var(--glass-edge), var(--glass-shadow) !important; background: var(--glass-strong); }
+.leaflet-bar a { background: transparent !important; width: 40px !important; height: 40px !important; line-height: 40px !important; }
+.pos-knap { width: 40px; height: 40px; border-radius: 50%; background: var(--glass-strong); box-shadow: var(--glass-edge), var(--glass-shadow); }
+.pos-knap.foelg { background: #0a84ff; }
+.leaflet-control-attribution { background: var(--glass) !important; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+
+/* Fremskridt, afkrydsning og vejr i systemfarver */
+.progress span, .check.done .box { background: var(--accent); }
+.hour { box-shadow: none; border-radius: 20px; }
+.verdict { border-radius: 30px; box-shadow: 0 10px 30px rgba(0, 0, 0, .15); }
+.verdict.ok { background: linear-gradient(160deg, #4cd964, #248a3d); }
+.verdict.soon { background: linear-gradient(160deg, #ffb340, #c93400); }
+.verdict.due { background: linear-gradient(160deg, #ff6961, #d70015); }
+
+/* Uden støtte for sløring (ældre browsere): brug fast baggrund, så teksten altid kan læses */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --glass: var(--card); --glass-strong: var(--card); }
+}
