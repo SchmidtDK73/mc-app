@@ -8,7 +8,21 @@
 
 const OSRM = "https://router.project-osrm.org/route/v1/driving/";
 const MAPBOX = "https://api.mapbox.com/directions/v5/mapbox/driving/";
+const VALHALLA = "https://valhalla1.openstreetmap.de/";
 const PLAN_KEY = "mcapp.plan";
+const UNDERLAG = {
+  asfalt: { navn: "Kun asfalt", tekst: "Undgår grusveje helt." },
+  "": { navn: "Blandet", tekst: "Mest asfalt, men en kort grusvej kan komme med." },
+  grus: { navn: "Gerne grus", tekst: "Søger grusveje, som man må køre på med motorcykel (ifølge OpenStreetMap). Tjek altid skilte." }
+};
+// Startsteder i Midt- og Nordjylland hvor testkørsler fandt flest grusveje med adgang (OpenStreetMap, nov. 2026)
+const GRUS_OMRAADER = {
+  "Fjerritslev": [57.088, 9.267], "Nørre Vorupør": [56.953, 8.375], "Harboøre": [56.617, 8.176],
+  "Thisted": [56.955, 8.691], "Bindslev": [57.542, 10.198], "Hirtshals": [57.591, 9.956],
+  "Sæby": [57.335, 10.518], "Dokkedal": [56.904, 10.254], "Fjellerup Strand": [56.515, 10.59],
+  "Hald Ege": [56.411, 9.353], "Aars": [56.803, 9.518], "Hobro": [56.639, 9.79]
+};
+const GRUS_FLADER = new Set(["compacted", "gravel", "dirt", "path"]);
 const RETNINGER = { "": "Tilfældig", N: "Nord", O: "Øst", S: "Syd", V: "Vest" };
 const RETNING_GRADER = { N: 0, O: 90, S: 180, V: 270 };
 const STILE = {
@@ -50,13 +64,66 @@ async function hentRute(base, coords, ekstra) {
   return res.json();
 }
 
-async function osrmRute(punkter) {
+// Valhalla (OpenStreetMap, FOSSGIS) kan regne for motorcykel, finde grusveje og fortælle vejbelægningen.
+async function valhalla(sti, body) {
+  const res = await fetch(VALHALLA + sti, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+
+function afkod6(str) {
+  const pts = [];
+  let i = 0, lat = 0, lon = 0;
+  while (i < str.length) {
+    for (const k of [0, 1]) {
+      let b, shift = 0, res = 0;
+      do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+      const d = res & 1 ? ~(res >> 1) : res >> 1;
+      if (k === 0) lat += d; else lon += d;
+    }
+    pts.push([Math.round(lat / 10) / 1e5, Math.round(lon / 10) / 1e5]);
+  }
+  return pts;
+}
+
+// Én samlet strækning (mellempunkter som "via"), så vejbelægningen kan slås op i ét kald bagefter
+async function valhallaRute(punkter, underlag) {
+  const mc = underlag === "grus" ? { use_trails: 1, use_highways: 0 } : { exclude_unpaved: true, use_highways: 0 };
+  const locations = punkter.map(([lat, lon], i) => ({ lat, lon, type: i === 0 || i === punkter.length - 1 ? "break" : "via" }));
+  const d = await valhalla("route", { locations, costing: "motorcycle", costing_options: { motorcycle: mc }, units: "km" });
+  if (!d.trip) throw new Error(d.error || "Ingen rute");
+  const shape = d.trip.legs[0].shape;
+  return { km: d.trip.summary.length, min: d.trip.summary.time / 60, shape, line: afkod6(shape) };
+}
+
+// Vejbelægning og vejklasse langs en Valhalla-rute: km grus, km motorvej, andel små veje, km markvej
+async function maalUnderlag(r) {
+  const t = await valhalla("trace_attributes", {
+    encoded_polyline: r.shape, costing: "motorcycle", shape_match: "walk_or_snap", units: "km",
+    filters: { attributes: ["edge.surface", "edge.length", "edge.use", "edge.road_class"], action: "include" }
+  });
+  let grus = 0, e = 0, smaa = 0, spor = 0;
+  for (const k of t.edges || []) {
+    const l = k.length || 0;
+    if (GRUS_FLADER.has(k.surface)) grus += l;
+    if (/motorway|trunk/.test(k.road_class)) e += l;
+    if (!/motorway|trunk|primary|secondary/.test(k.road_class || "")) smaa += l;
+    if (k.use === "track") spor += l;
+  }
+  Object.assign(r, { grusKm: grus, eKm: e, smaa: smaa / r.km, sporKm: spor });
+  return r;
+}
+
+async function osrmRute(punkter, underlag = "") {
+  if (underlag === "grus") return valhallaRute(punkter, "grus");
   const coords = punkter.map(([lat, lon]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";");
   let d;
   if (window.MAPBOX_TOKEN) {
-    try { d = await hentRute(MAPBOX, coords, "&access_token=" + window.MAPBOX_TOKEN); }
-    catch (e) { console.warn("Mapbox fejlede, bruger OSRM", e); }
+    try { d = await hentRute(MAPBOX, coords, (underlag === "asfalt" ? "&exclude=unpaved" : "") + "&access_token=" + window.MAPBOX_TOKEN); }
+    catch (e) { console.warn("Mapbox fejlede, bruger reserve", e); }
   }
+  // OSRM's demo kan ikke undgå grus – så bruges Valhalla som reserve for "kun asfalt"
+  if ((!d || d.code !== "Ok") && underlag === "asfalt") return maalUnderlag(await valhallaRute(punkter, "asfalt"));
   if (!d || d.code !== "Ok") d = await hentRute(OSRM, coords, "");
   if (d.code !== "Ok" || !d.routes || !d.routes.length) throw new Error(d.message || "Ingen rute");
   const r = d.routes[0];
@@ -129,40 +196,49 @@ function forenkl(pts, eps) {
 
 const vent = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function lavRute({ start, km, retning, stil = "" }, onProgress) {
-  const antal = stil ? 5 : 3;
+async function lavRute({ start, km, retning, stil = "", underlag = "", maksForslag = 0 }, onProgress) {
+  const grus = underlag === "grus";
+  const mange = stil || grus;
+  const pause = grus ? 1100 : 400; // Valhalla er en gratis tjeneste – højst ca. ét kald i sekundet
+  const antal = maksForslag || (mange ? 5 : 3);
   const varianter = retning === ""
     ? Array.from({ length: antal }, (_, i) => (Math.random() * 72 + i * 72) % 360)
-    : (stil ? [-35, -15, 0, 15, 35] : [-25, 0, 25]).map((d) => (RETNING_GRADER[retning] + d + 360) % 360);
-  const n = km < 60 ? 3 : km < 150 ? 4 : 5;
+    : (mange ? [-35, -15, 0, 15, 35] : [-25, 0, 25]).slice(0, maksForslag || undefined).map((d) => (RETNING_GRADER[retning] + d + 360) % 360);
+  const n = (km < 60 ? 3 : km < 150 ? 4 : 5) + (grus ? 1 : 0); // flere punkter = flere chancer for at ramme grusveje
   let radius = km / (2 * Math.PI * 1.3);
   const kandidater = [];
   for (let v = 0; v < varianter.length; v++) {
     const grader = varianter[v];
     let res = null;
-    for (let forsoeg = 0; forsoeg < (stil ? 2 : 3); forsoeg++) {
+    for (let forsoeg = 0; forsoeg < (mange ? 2 : 3); forsoeg++) {
       onProgress && onProgress(`Beregner forslag ${v + 1} af ${varianter.length}…`);
-      res = await osrmRute([start, ...cirkelPunkter(start, radius, grader, n), start]);
+      res = await osrmRute([start, ...cirkelPunkter(start, radius, grader, n), start], underlag);
       const afv = Math.abs(res.km - km) / km;
       radius *= km / res.km; // lær af resultatet – også til de næste forslag
       if (afv <= 0.1) break;
-      await vent(400); // skån den gratis tjeneste
+      await vent(pause); // skån den gratis tjeneste
+    }
+    if (grus) {
+      onProgress && onProgress(`Tjekker vejbelægning på forslag ${v + 1}…`);
+      await vent(pause);
+      try { await maalUnderlag(res); } catch { Object.assign(res, { grusKm: 0, eKm: 0, smaa: 0, sporKm: 0 }); }
     }
     res.grader = grader;
-    res.basis = Math.abs(res.km - km) / km + (res.eKm / res.km) * 2 + gentagelse(res.line) * 3;
+    res.basis = Math.abs(res.km - km) / km + (res.eKm / res.km) * 2 + gentagelse(res.line) * 3 + ((res.sporKm || 0) / res.km) * 3;
     res.sving = svingPrKm(res.line);
     if (stil === "bakket") {
       onProgress && onProgress(`Måler højder på forslag ${v + 1}…`);
       try { res.stigning = await stigningPrKm(res.line, res.km); } catch { res.stigning = 0; }
     }
     kandidater.push(res);
-    if (!stil && res.basis < 0.1) break; // godt nok
-    await vent(400);
+    if (!mange && res.basis < 0.1) break; // godt nok
+    await vent(pause);
   }
   // Vælg: basis (længde, motorvej, frem-og-tilbage) minus bonus for den valgte stil
   const maal = { snoet: (k) => k.sving, bakket: (k) => k.stigning || 0, smaa: (k) => k.smaa }[stil];
   const maks = maal ? Math.max(...kandidater.map(maal), 1e-9) : 1;
-  kandidater.forEach((k) => (k.score = k.basis - (maal ? 0.6 * (maal(k) / maks) : 0)));
+  const maksGrus = Math.max(...kandidater.map((k) => (k.grusKm || 0) / k.km), 1e-9);
+  kandidater.forEach((k) => (k.score = k.basis - (maal ? 0.6 * (maal(k) / maks) : 0) - (grus ? 0.8 * ((k.grusKm || 0) / k.km / maksGrus) : 0)));
   const bedst = kandidater.reduce((a, b) => (b.score < a.score ? b : a));
   if (bedst.stigning == null) { try { bedst.stigning = await stigningPrKm(bedst.line, bedst.km); } catch { /* vises bare ikke */ } }
   return bedst;
@@ -177,7 +253,8 @@ function retningsNavn(grader) {
 function renderPlanner() {
   destroyMap();
   setHeader("Lav min egen rute", true);
-  const p = Object.assign({ by: "Hobro", km: 100, retning: "", stil: "" }, lsGet(PLAN_KEY, {}));
+  const p = Object.assign({ by: "Hobro", km: 100, retning: "", stil: "", underlag: "", omraade: "" }, lsGet(PLAN_KEY, {}));
+  if (!(p.underlag in UNDERLAG)) p.underlag = "";
   const byer = ["Aars", "Hobro", "Randers"];
   view.innerHTML = `
     <div class="filter-label">Start fra</div>
@@ -205,9 +282,22 @@ function renderPlanner() {
       ${Object.entries(STILE).map(([k, v]) => `<button class="chip ${p.stil === k ? "on" : ""}" data-stil="${k}">${v.ikon ? v.ikon + " " : ""}${v.navn}</button>`).join("")}
     </div>
     <div class="pad muted" id="stilTekst" style="padding-top:0;font-size:14px">${STILE[p.stil].tekst}</div>
+    <div class="filter-label">Vejbelægning</div>
+    <div class="chips" id="underlagChips">
+      ${Object.entries(UNDERLAG).map(([k, v]) => `<button class="chip ${p.underlag === k ? "on" : ""}" data-underlag="${k}">${v.navn}</button>`).join("")}
+    </div>
+    <div class="pad muted" id="underlagTekst" style="padding-top:0;font-size:14px">${UNDERLAG[p.underlag].tekst}</div>
+    <div id="omraadeBoks" ${p.underlag === "grus" ? "" : "hidden"}>
+      <div class="filter-label">Hvor må grusturen ligge?</div>
+      <div class="chips" id="omraadeChips">
+        <button class="chip ${p.omraade !== "midtnord" ? "on" : ""}" data-omraade="">Fra startstedet</button>
+        <button class="chip ${p.omraade === "midtnord" ? "on" : ""}" data-omraade="midtnord">Hele Midt- og Nordjylland</button>
+      </div>
+      <div class="pad muted" style="padding-top:0;font-size:14px">"Hele Midt- og Nordjylland" prøver flere egne (fx Thy, Han Herred, Vendsyssel og Djursland) og vælger den tur med mest grus. Tager ca. et halvt minut.</div>
+    </div>
     <div class="btn-row"><button class="btn block" id="lavBtn">Lav rute</button></div>
     <div id="planStatus" class="pad muted"></div>
-    <p class="muted pad">Ruten beregnes på OpenStreetMap-veje og forsøger at undgå motorvej. Kræver internet. Tryk igen for et nyt forslag.</p>
+    <p class="muted pad">Ruten beregnes på OpenStreetMap-veje og forsøger at undgå motorvej. Grusveje vælges kun, hvor motorcykler har adgang ifølge kortdata – skilte som "Privat vej" eller "Kun landbrugskørsel" gælder altid. Kræver internet. Tryk igen for et nyt forslag.</p>
   `;
   const gem = () => lsSet(PLAN_KEY, p);
   $("#byChips").onclick = (e) => {
@@ -233,6 +323,18 @@ function renderPlanner() {
     view.querySelectorAll("#stilChips .chip").forEach((c) => c.classList.toggle("on", c === b));
     $("#stilTekst").textContent = STILE[p.stil].tekst + (p.stil ? " Tager lidt længere tid, fordi der laves flere forslag." : "");
   };
+  $("#underlagChips").onclick = (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    p.underlag = b.dataset.underlag; gem();
+    view.querySelectorAll("#underlagChips .chip").forEach((c) => c.classList.toggle("on", c === b));
+    $("#underlagTekst").textContent = UNDERLAG[p.underlag].tekst + (p.underlag === "grus" ? " Tager lidt længere tid." : "");
+    $("#omraadeBoks").hidden = p.underlag !== "grus";
+  };
+  $("#omraadeChips").onclick = (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    p.omraade = b.dataset.omraade; gem();
+    view.querySelectorAll("#omraadeChips .chip").forEach((c) => c.classList.toggle("on", c === b));
+  };
   $("#lavBtn").onclick = () => startPlan(p);
 }
 
@@ -250,23 +352,42 @@ async function startPlan(p) {
   if (!navigator.onLine) { status.textContent = "Du er offline – ruten kan kun laves med internet."; return; }
   btn.disabled = true; btn.textContent = "Arbejder…";
   try {
-    status.textContent = p.by === "pos" ? "Finder din position…" : "";
-    const s = await hentStart(p.by);
-    const r = await lavRute({ start: s.punkt, km: p.km, retning: p.retning, stil: p.stil }, (t) => (status.textContent = t));
+    status.textContent = p.by === "pos" && !(p.underlag === "grus" && p.omraade === "midtnord") ? "Finder din position…" : "";
+    const vidt = p.underlag === "grus" && p.omraade === "midtnord";
+    let s, r;
+    if (vidt) {
+      // Prøv 4 tilfældige egne med 2 forslag hver – behold turen med størst andel grus
+      const steder = Object.entries(GRUS_OMRAADER).sort(() => Math.random() - 0.5).slice(0, 4);
+      for (let i = 0; i < steder.length; i++) {
+        const [navn, punkt] = steder[i];
+        try {
+          const k = await lavRute({ start: punkt, km: p.km, retning: "", stil: p.stil, underlag: "grus", maksForslag: 2 },
+            (t) => (status.textContent = `Egn ${i + 1} af ${steder.length} (${navn}): ${t}`));
+          k.vaerdi = (k.grusKm || 0) / k.km - Math.abs(k.km - p.km) / p.km;
+          if (!r || k.vaerdi > r.vaerdi) { r = k; s = { navn, punkt }; }
+        } catch (e) { console.warn("Egn fejlede", navn, e); }
+      }
+      if (!r) throw new Error("Ingen rute");
+    } else {
+      s = await hentStart(p.by);
+      r = await lavRute({ start: s.punkt, km: p.km, retning: p.retning, stil: p.stil, underlag: p.underlag }, (t) => (status.textContent = t));
+    }
+    const grusKm = r.grusKm != null ? Math.round(r.grusKm) : null;
     const km = Math.round(r.km);
     const retning = p.retning ? RETNINGER[p.retning].toLowerCase() : retningsNavn(r.grader);
     sidstePlan = {
       id: "egen-" + uid(),
       egen: true,
-      navn: `${p.stil ? STILE[p.stil].navn + " rundtur" : "Rundtur"} fra ${s.navn === "min position" ? "min position" : s.navn}, ${km} km mod ${retning}`,
+      navn: `${p.stil ? STILE[p.stil].navn + " rundtur" : p.underlag === "grus" ? "Grus-rundtur" : "Rundtur"} fra ${s.navn === "min position" ? "min position" : s.navn}, ${km} km mod ${retning}`,
       region: "", vejtype: [], start: s.navn === "min position" ? "Min position" : s.navn, slut: "Samme sted (rundtur)",
-      beskrivelse: `Automatisk lavet ${p.stil ? STILE[p.stil].navn.toLowerCase() + " " : ""}rundtur på ca. ${km} km mod ${retning}${r.eKm > 1 ? `. Ca. ${Math.round(r.eKm)} km på E-vej/motorvej.` : "."} Tjek ruten på kortet før du kører – den er beregnet automatisk og kender ikke vejarbejde eller lukkede veje.`,
+      beskrivelse: `Automatisk lavet ${p.stil ? STILE[p.stil].navn.toLowerCase() + " " : ""}rundtur på ca. ${km} km mod ${retning}${r.eKm > 1 ? `. Ca. ${Math.round(r.eKm)} km på E-vej/motorvej.` : "."}${p.underlag === "asfalt" ? " Kun asfalt." : ""}${vidt ? ` Startstedet ${s.navn} er valgt, fordi turen herfra havde mest grus af de egne i Midt- og Nordjylland, der blev prøvet.` : ""}${p.underlag === "grus" ? ` Ca. ${grusKm} km grusvej. Grusveje er valgt efter OpenStreetMap, hvor motorcykler har adgang – respektér altid skilte om privat vej eller landbrugskørsel.` : ""} Tjek ruten på kortet før du kører – den er beregnet automatisk og kender ikke vejarbejde eller lukkede veje.`,
       stop: [], kilder: [],
       km, min: Math.round(r.min), line: forenkl(r.line, 0.00008), oprettet: today(),
-      stil: p.stil, stats: { sving: Math.round(r.sving), stigning: r.stigning != null ? Math.round(r.stigning * 10) / 10 : null, smaa: Math.round(r.smaa * 100) }
+      stil: p.stil, stats: { sving: Math.round(r.sving), stigning: r.stigning != null ? Math.round(r.stigning * 10) / 10 : null, smaa: Math.round(r.smaa * 100), grus: grusKm }
     };
     // Ærlig besked hvis området ikke har meget af det ønskede
     const svag = { bakket: r.stigning != null && r.stigning < 5, snoet: r.sving < 40, smaa: r.smaa < 0.4 }[p.stil];
+    if (p.underlag === "grus" && grusKm < Math.max(3, km * 0.05)) sidstePlan.beskrivelse += vidt ? " Bemærk: grusveje med adgang er sjældne i kortdata – tryk \"Lav en ny\" for at prøve andre egne." : " Bemærk: der er ikke mange grusveje med adgang i området – prøv evt. en anden retning, startby eller \"Hele Midt- og Nordjylland\".";
     if (svag) sidstePlan.beskrivelse += ` Bemærk: området har ikke meget ${{ bakket: "op og ned", snoet: "snoet vej", smaa: "små veje" }[p.stil]} – dette var det bedste af flere forslag. Prøv evt. en anden retning eller startby.`;
     location.hash = "#rute/" + sidstePlan.id;
   } catch (e) {

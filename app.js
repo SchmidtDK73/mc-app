@@ -194,7 +194,8 @@ async function renderRute(id) {
         ${r.stats ? `
           <div>Sving</div><div>${r.stats.sving} °/km ${niveau(r.stats.sving, 40, 80)}</div>
           ${r.stats.stigning != null ? `<div>Stigning</div><div>${String(r.stats.stigning).replace(".", ",")} m/km ${niveau(r.stats.stigning, 5, 9)}</div>` : ""}
-          <div>Små veje</div><div>${r.stats.smaa} % ${niveau(r.stats.smaa, 40, 65)}</div>` : ""}
+          <div>Små veje</div><div>${r.stats.smaa} % ${niveau(r.stats.smaa, 40, 65)}</div>
+          ${r.stats.grus != null ? `<div>Grusvej</div><div>ca. ${r.stats.grus} km</div>` : ""}` : ""}
       </div>
       <div style="margin-top:6px">${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}</div>
     </div>
