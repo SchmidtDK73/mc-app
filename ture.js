@@ -92,7 +92,7 @@ function editTrip(trip, routeId, forslag, efterGem) {
       <label class="field">Rute (valgfri)
         <select name="rute"><option value="">– Ingen –</option>${(r && r.egen && !alleRuter().includes(r) ? [r, ...alleRuter()] : alleRuter()).map((x) => `<option value="${x.id}" ${x.id === t.rute ? "selected" : ""}>${esc(x.navn)}</option>`).join("")}</select>
       </label>
-      <label class="field">Km kørt<input name="km" type="number" inputmode="decimal" min="0" step="any" value="${esc(t.km)}" required></label>
+      <label class="field">Km kørt<input name="km" type="text" inputmode="decimal" pattern="[0-9]+([.,][0-9]+)?" title="Fx 88 eller 49,5" autocomplete="off" value="${esc(String(t.km).replace(".", ","))}" required></label>
       <label class="field">Noter<textarea name="noter" placeholder="Vejr, gode stop, hvem kørte med…">${esc(t.noter)}</textarea></label>
       <button class="btn block">Gem tur</button>
       ${trip ? `<button type="button" class="btn danger block" id="del">Slet tur</button>` : ""}

@@ -268,7 +268,7 @@ async function initBenzin(km) {
   const v = Object.assign({ kml: "", oktan: "95" }, lsGet(BENZIN_KEY, {}));
   boks.innerHTML = `
     <label class="field" style="margin-bottom:10px">Km pr. liter
-      <input id="kml" type="number" inputmode="decimal" min="5" max="60" step="0.5" placeholder="fx 20" value="${esc(String(v.kml))}">
+      <input id="kml" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" placeholder="fx 20 eller 22,5" value="${esc(String(v.kml))}" style="font-size:16px">
     </label>
     <div class="chips" id="oktanChips" style="padding:0 0 10px">
       ${["95", "100"].map((o) => `<button class="chip ${v.oktan === o ? "on" : ""}" data-oktan="${o}">${o} oktan</button>`).join("")}
@@ -288,7 +288,9 @@ async function initBenzin(km) {
     }
     $("#benzinKilde").textContent = pris && pris.priser ? `Listepris for ${v.oktan} oktan fra OK, senest ændret ${new Date(pris.dato).toLocaleDateString("da-DK", { day: "numeric", month: "long" })}. Prisen ved standeren kan være lavere.` : "Benzinprisen kunne ikke hentes.";
   };
-  $("#kml").oninput = (e) => { v.kml = e.target.value; lsSet(BENZIN_KEY, v); vis(); };
+  // Tekstfelt (ikke type=number): iPhonens danske tastatur giver komma, som et talfelt afviser
+  $("#kml").oninput = (e) => { v.kml = e.target.value.replace(/[^0-9.,]/g, ""); if (e.target.value !== v.kml) e.target.value = v.kml; lsSet(BENZIN_KEY, v); vis(); };
+  $("#kml").onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
   $("#oktanChips").onclick = (e) => {
     const b = e.target.closest(".chip"); if (!b) return;
     v.oktan = b.dataset.oktan; lsSet(BENZIN_KEY, v);
