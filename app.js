@@ -207,6 +207,7 @@ async function renderRute(id) {
       ${gemt ? `<button class="btn danger" id="delRouteBtn">Slet rute</button>` : `<button class="btn" id="saveRouteBtn">Gem rute</button>`}
       <a class="btn secondary" href="#ny-rute">Lav en ny</a>
     </div>` : ""}
+    <div class="btn-row"><button class="btn secondary" id="gpxEksportBtn">⬇︎ Eksportér GPX-fil</button></div>
     <div class="center-link"><a href="#" id="beelineHelp">Sådan får du ruten over i Beeline · GPX</a></div>
     <div class="btn-row"><button class="btn secondary" id="logTripBtn">Log som tur i dagbogen</button></div>
     <div id="undervejs"></div>
@@ -220,6 +221,8 @@ async function renderRute(id) {
   if ($("#saveRouteBtn")) $("#saveRouteBtn").onclick = () => { gemEgenRute(r); toast("Ruten er gemt under Mine ruter"); renderRute(id); };
   if ($("#delRouteBtn")) $("#delRouteBtn").onclick = () => { if (confirm("Slet denne rute?")) { sletEgenRute(r.id); location.hash = "#ruter"; } };
   $("#gpxBtn").addEventListener("click", () => downloadGpx(r));
+  // Samme fil – på iPhone åbner delingsarket, hvor "Gem i Filer" eller en anden GPS-app kan vælges
+  $("#gpxEksportBtn").addEventListener("click", () => downloadGpx(r));
   $("#beelineHelp").addEventListener("click", (e) => { e.preventDefault(); beelineHjaelp(r); });
   $("#logTripBtn").addEventListener("click", () => editTrip(null, r.id));
 
