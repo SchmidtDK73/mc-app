@@ -1,5 +1,5 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v17";
+const VERSION = "v18";
 const SHELL = `mcapp-shell-${VERSION}`;
 const TILES = "mcapp-tiles";
 const MAX_TILES = 1500;
@@ -54,7 +54,7 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
 
   // Kortfliser: cache først, ellers net (og gem)
-  if (url.hostname === "tile.openstreetmap.org") {
+  if (url.hostname === "tile.openstreetmap.org" || (url.hostname === "api.mapbox.com" && url.pathname.includes("/tiles/"))) {
     e.respondWith(
       caches.open(TILES).then(async (c) => {
         const hit = await c.match(req);
