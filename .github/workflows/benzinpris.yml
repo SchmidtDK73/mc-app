@@ -1,0 +1,27 @@
+# Henter OK's listepris på 95 og 100 oktan hver nat (prisen sættes kl. 00) og udgiver hvis den er ændret
+name: Opdater benzinpris
+on:
+  schedule:
+    - cron: "40 23 * * *"   # 00:40 dansk vintertid / 01:40 sommertid
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+jobs:
+  pris:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hent pris fra OK
+        run: python3 tools/hent_benzinpris.py data/benzinpris.json
+      - name: Gem og udgiv hvis ændret
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet data/benzinpris.json; then echo "Ingen ændringer"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Opdater benzinpris" data/benzinpris.json
+          git pull --rebase -q && git push
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" || true

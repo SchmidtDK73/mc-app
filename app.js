@@ -67,7 +67,7 @@ function filtered() {
 function fmtTid(min) { const h = Math.floor(min / 60), m = min % 60; return h ? `${h} t ${m} min` : `${m} min`; }
 
 let map = null;
-function destroyMap() { if (map) { map.remove(); map = null; } }
+function destroyMap() { if (typeof stopPosition === "function") stopPosition(); if (map) { map.remove(); map = null; } }
 
 // Kortbilleder fra Mapbox' gadekort med tydelige bynavne og vejnumre (samme kort i lyst og mørkt tema).
 // Uden nøgle: OpenStreetMap. Nøglen er låst til appens adresse, så hele adressen sendes som referer.
@@ -98,6 +98,7 @@ function makeMap(el) {
     });
   }
   L.control.zoom({ position: "topright" }).addTo(m);
+  if (typeof tilfoejPositionsknap === "function") tilfoejPositionsknap(m);
   return m;
 }
 
@@ -199,6 +200,8 @@ async function renderRute(id) {
       </div>
       <div style="margin-top:6px">${r.vejtype.map((v) => `<span class="tag">${VEJTYPER[v]}</span>`).join("")}</div>
     </div>
+    <div class="section-title">Benzin</div>
+    <div class="card" id="benzin"></div>
     <div class="btn-row">
       <button class="btn" id="gpxBtn">Send til Beeline</button>
       <a class="btn secondary" target="_blank" rel="noopener" href="${mapsLink(r)}">Åbn i Kort</a>
@@ -209,7 +212,10 @@ async function renderRute(id) {
     </div>` : ""}
     <div class="btn-row"><button class="btn secondary" id="gpxEksportBtn">⬇︎ Eksportér GPX-fil</button></div>
     <div class="center-link"><a href="#" id="beelineHelp">Sådan får du ruten over i Beeline · GPX</a></div>
-    <div class="btn-row"><button class="btn secondary" id="logTripBtn">Log som tur i dagbogen</button></div>
+    <div class="btn-row">
+      <button class="btn" id="optagBtn">▶︎ Kør turen med GPS</button>
+      <button class="btn secondary" id="logTripBtn">Log tur i dagbogen</button>
+    </div>
     <div id="undervejs"></div>
     <div class="section-title">Om ruten</div>
     <div class="card"><p style="margin:0">${esc(r.beskrivelse)}</p></div>
@@ -225,6 +231,12 @@ async function renderRute(id) {
   $("#gpxEksportBtn").addEventListener("click", () => downloadGpx(r));
   $("#beelineHelp").addEventListener("click", (e) => { e.preventDefault(); beelineHjaelp(r); });
   $("#logTripBtn").addEventListener("click", () => editTrip(null, r.id));
+  $("#optagBtn").addEventListener("click", () => {
+    if (optag && !optag.slut) { location.hash = "#optag"; return; }
+    if (r.egen && !(DB.mineRuter || []).some((x) => x.id === r.id)) gemEgenRute(r); // så turen kan pege på ruten bagefter
+    startOptagelse(r.id);
+  });
+  initBenzin(r.km);
 
   destroyMap();
   map = makeMap($("#map"));
@@ -233,6 +245,57 @@ async function renderRute(id) {
   L.circleMarker(r.line[r.line.length - 1], { radius: 8, color: "#fff", weight: 3, fillColor: "#c92a2a", fillOpacity: 1 }).bindTooltip("Slut: " + r.slut).addTo(map);
   map.fitBounds(pl.getBounds(), { padding: [20, 20] });
   initUndervejs(r);
+}
+
+/* ---------- Benzinøkonomi ----------
+   Forbrug ud fra hvor mange km MC'en kører på literen, og OK's listepris (data/benzinpris.json,
+   opdateres hver nat af .github/workflows/benzinpris.yml). Valgene gemmes på telefonen. */
+const BENZIN_KEY = "mcapp.benzin";
+let benzinPris = null;
+async function hentBenzinPris() {
+  if (benzinPris) return benzinPris;
+  try {
+    benzinPris = await (await fetch("data/benzinpris.json", { cache: "no-cache" })).json();
+    lsSet("mcapp.benzinpris", benzinPris);
+  } catch { benzinPris = lsGet("mcapp.benzinpris", null); } // offline: sidst kendte pris
+  return benzinPris;
+}
+
+const kr = (v, d = 2) => v.toLocaleString("da-DK", { minimumFractionDigits: d, maximumFractionDigits: d });
+
+async function initBenzin(km) {
+  const boks = $("#benzin"); if (!boks) return;
+  const v = Object.assign({ kml: "", oktan: "95" }, lsGet(BENZIN_KEY, {}));
+  boks.innerHTML = `
+    <label class="field" style="margin-bottom:10px">Km pr. liter
+      <input id="kml" type="number" inputmode="decimal" min="5" max="60" step="0.5" placeholder="fx 20" value="${esc(String(v.kml))}">
+    </label>
+    <div class="chips" id="oktanChips" style="padding:0 0 10px">
+      ${["95", "100"].map((o) => `<button class="chip ${v.oktan === o ? "on" : ""}" data-oktan="${o}">${o} oktan</button>`).join("")}
+    </div>
+    <div class="kv" id="benzinTal"></div>
+    <div class="muted" id="benzinKilde" style="font-size:12px;margin-top:8px"></div>`;
+  const pris = await hentBenzinPris();
+  const vis = () => {
+    const kml = parseFloat(String(v.kml).replace(",", "."));
+    const lpris = pris && pris.priser ? pris.priser[v.oktan] : null;
+    const tal = $("#benzinTal");
+    if (!(kml > 0)) { tal.innerHTML = `<div>Forbrug</div><div class="muted">Tast km/l</div>`; }
+    else {
+      const liter = km / kml;
+      tal.innerHTML = `<div>Forbrug på ${km} km</div><div>${kr(liter, 1)} l</div>` +
+        (lpris ? `<div>Pris (${kr(lpris)} kr/l)</div><div>ca. ${kr(Math.round(liter * lpris), 0)} kr</div>` : `<div>Pris</div><div class="muted">ingen benzinpris</div>`);
+    }
+    $("#benzinKilde").textContent = pris && pris.priser ? `Listepris for ${v.oktan} oktan fra OK, senest ændret ${new Date(pris.dato).toLocaleDateString("da-DK", { day: "numeric", month: "long" })}. Prisen ved standeren kan være lavere.` : "Benzinprisen kunne ikke hentes.";
+  };
+  $("#kml").oninput = (e) => { v.kml = e.target.value; lsSet(BENZIN_KEY, v); vis(); };
+  $("#oktanChips").onclick = (e) => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    v.oktan = b.dataset.oktan; lsSet(BENZIN_KEY, v);
+    boks.querySelectorAll("#oktanChips .chip").forEach((c) => c.classList.toggle("on", c === b));
+    vis();
+  };
+  vis();
 }
 
 // Lille vurdering ved rutens tal: lav / middel / høj (grænser sat ud fra danske landeveje)
@@ -375,10 +438,11 @@ function route() {
   closeSheet();
   const h = location.hash.slice(1) || "ruter";
   if (h === "mc" || h.startsWith("mc/")) { location.replace("#ruter"); return; }
-  const tab = ["vejr", "ture"].find((t) => h === t || h.startsWith(t + "/")) || "ruter";
+  const tab = h === "optag" ? "ture" : ["vejr", "ture"].find((t) => h === t || h.startsWith(t + "/")) || "ruter";
   document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
   view.scrollTop = 0;
   if (h === "ny-rute") renderPlanner();
+  else if (h === "optag") renderOptag();
   else if (h.startsWith("rute/")) renderRute(h.slice(5));
   else if (tab === "vejr") { destroyMap(); renderVejr(); }
   else if (tab === "ture") { destroyMap(); renderTure(h.split("/").slice(1)); }

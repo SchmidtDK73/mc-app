@@ -1,5 +1,5 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v25";
+const VERSION = "v27";
 const SHELL = `mcapp-shell-${VERSION}`;
 const TILES = "mcapp-tiles-2"; // nyt navn: smider evt. afviste Mapbox-fliser fra v18/v19 ud
 const MAX_TILES = 1500;
@@ -14,8 +14,10 @@ const SHELL_FILES = [
   "ruteplan.js",
   "config.js",
   "undervejs.js",
+  "gps.js",
   "data/routes.js",
   "data/geometry.json",
+  "data/benzinpris.json",
   "vendor/leaflet.js",
   "vendor/leaflet.css",
   "manifest.webmanifest",

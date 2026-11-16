@@ -49,12 +49,13 @@ function renderDagbog() {
         <div><div class="stat">${sum(ture).toLocaleString("da-DK")}</div><div class="muted">km i alt</div></div>
       </div>
     </div>
+    <div class="btn-row"><button class="btn" id="optagNy">▶︎ Optag tur med GPS</button></div>
     ${ture.length ? ture.map((t) => `
       <button class="card" data-trip="${t.id}">
         <div class="row">
           <div class="grow">
             <b>${esc(t.titel || routeName(t.rute) || "Tur")}</b>
-            <div class="muted">${fmtDate(t.dato)} · ${fmtKm(t.km)}${t.rute && t.titel ? " · " + esc(routeName(t.rute)) : ""}</div>
+            <div class="muted">${fmtDate(t.dato)} · ${fmtKm(t.km)}${t.minutter ? " · " + fmtVarighed(t.minutter * 60000) : ""}${t.benzin && t.benzin.kr != null ? " · ⛽ " + t.benzin.kr + " kr" : ""}${t.gps ? " · GPS" : ""}${t.rute && t.titel ? " · " + esc(routeName(t.rute)) : ""}</div>
             ${t.noter ? `<div class="muted clamp">${esc(t.noter)}</div>` : ""}
           </div>
           <span class="muted" style="font-size:22px">›</span>
@@ -72,15 +73,17 @@ function renderDagbog() {
     <button class="fab" id="fab" aria-label="Ny tur">+</button>
   `;
   $("#fab").onclick = () => editTrip(null);
+  $("#optagNy").onclick = () => { location.hash = "#optag"; };
   $("#exportBtn").onclick = exportData;
   $("#importBtn").onclick = () => $("#importFile").click();
   $("#importFile").onchange = (e) => importData(e, renderDagbog);
   view.querySelectorAll("[data-trip]").forEach((b) => (b.onclick = () => editTrip(DB.ture.find((t) => t.id === b.dataset.trip))));
 }
 
-function editTrip(trip, routeId) {
+// forslag: udfyldte felter til en ny tur (fx fra GPS-optagelse) + ekstra data der gemmes med; efterGem kaldes når den er gemt
+function editTrip(trip, routeId, forslag, efterGem) {
   const r = routeId ? findRoute(routeId) : null;
-  const t = trip || { dato: today(), titel: "", rute: routeId || "", km: r && r.km ? r.km : "", noter: "" };
+  const t = trip || Object.assign({ dato: today(), titel: "", rute: routeId || "", km: r && r.km ? r.km : "", noter: "" }, forslag || {});
   openSheet(`
     <h2>${trip ? "Ret tur" : "Ny tur"}</h2>
     <form id="f">
@@ -100,12 +103,13 @@ function editTrip(trip, routeId) {
     f.onsubmit = (ev) => {
       ev.preventDefault();
       const d = formData(f);
-      const rec = { id: trip ? trip.id : uid(), dato: d.dato, titel: d.titel.trim(), rute: d.rute, km: numOrEmpty(d.km), noter: d.noter.trim() };
+      const rec = Object.assign({}, !trip && forslag && forslag.ekstra, { id: trip ? trip.id : uid(), dato: d.dato, titel: d.titel.trim(), rute: d.rute, km: numOrEmpty(d.km), noter: d.noter.trim() });
       if (!Array.isArray(DB.ture)) DB.ture = [];
       if (trip) Object.assign(trip, rec); else DB.ture.push(rec);
       let msg = "Tur gemt";
       save(); closeSheet(); toast(msg);
-      if (location.hash.startsWith("#ture")) renderDagbog();
+      if (efterGem) { efterGem(rec); location.hash = "#ture"; }
+      else if (location.hash.startsWith("#ture")) renderDagbog();
     };
     const del = $("#del", s);
     if (del) del.onclick = () => {
