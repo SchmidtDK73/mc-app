@@ -71,6 +71,138 @@ window.ROUTES = [
       { navn: "VisitDenmark: Kulturhistorisk rundtur langs Limfjorden i Himmerland", url: "https://www.visitdenmark.com/denmark/plan-your-trip/kulturhistorisk-rundtur-langs-limfjorden-i-himmerland-gdk1159056" }
     ]
   },
+  {
+    id: "aars-loegstoer",
+    navn: "Løgstør & Aggersund",
+    region: "Nordjylland",
+    hjem: "Aars",
+    vejtype: ["kyst", "landevej"],
+    start: "Aars", slut: "Aars (rundtur)",
+    beskrivelse:
+      "Fra Aars mod nordvest via Ranum til muslingebyen Løgstør ved Limfjorden, over Aggersundbroen til vikingeborgen Aggersborg og tilbage via Overlade til Aars. " +
+      "Rolige landeveje uden motorvej og flere steder udsigt over Limfjorden. Turen over broen og tilbage er kort, men giver et godt kig ud over fjorden.",
+    stop: [
+      { navn: "Ranum", tekst: "Lille by på vejen mod Løgstør. Vitskøl Kloster, et tidligere cistercienserkloster med ruiner og urtehaver, ligger i nærheden – en mulig afstikker.", pos: [56.8968, 9.2279] },
+      { navn: "Løgstør og Frederik VII's Kanal", tekst: "Den 4,4 km lange kanal blev gravet med håndkraft 1856–61. Limfjordsmuseet ligger ved kanalen, og byen har en gammel hovedgade.", pos: [56.9622, 9.2631] },
+      { navn: "Aggersborg", tekst: "Harald Blåtands første og største ringborg ved Aggersund – på UNESCOs verdensarvsliste.", pos: [56.9946, 9.2590] },
+      { navn: "Overlade", tekst: "Landsby syd for Løgstør – herfra over Himmerland tilbage mod Aars.", pos: [56.8584, 9.2641] }
+    ],
+    kilder: [
+      { navn: "VisitDenmark: Kulturhistorisk rundtur langs Limfjorden i Himmerland", url: "https://www.visitdenmark.com/denmark/plan-your-trip/kulturhistorisk-rundtur-langs-limfjorden-i-himmerland-gdk1159056" },
+      { navn: "VisitDenmark: Muslingebyen Løgstør", url: "https://www.visitdenmark.com/denmark/plan-your-trip/the-city-of-mussels-the-history-of-logstor-gdk1122010" },
+      { navn: "VisitHimmerland: Verdensarv (Aggersborg)", url: "https://www.visithimmerland.eu/excursions/worldheritage" }
+    ]
+  },
+  {
+    id: "aars-rold-skov",
+    navn: "Rold Skov & Rebild fra Aars",
+    region: "Nordjylland",
+    hjem: "Aars",
+    vejtype: ["bakket", "landevej"],
+    start: "Aars", slut: "Aars (rundtur)",
+    beskrivelse:
+      "Fra Aars mod øst til Rebild Bakker, gennem Skørping og ned forbi Madum Sø i Rold Skov, videre via Arden og Rold og hjem over Nørager. " +
+      "Skovveje og bakker gennem en af Danmarks største skove. Ca. 7 km af turen ligger på E45 mellem Rold og Nørager-egnen.",
+    stop: [
+      { navn: "Rebild Bakker", tekst: "Lyngklædte bakker i Rold Skov, fredet i 1940 og 1963. Mange vandrestier og udsigtspunkter.", pos: [56.8313, 9.8495] },
+      { navn: "Skørping", tekst: "Stationsby midt i Rold Skov – god til en pause.", pos: [56.8347, 9.8880] },
+      { navn: "Madum Sø og Store Blåkilde", tekst: "Skovsø i Rold Skov. Kildevældet Store Blåkilde ligger syd for søen og har sin blå farve fra vandet selv.", pos: [56.7894, 9.9504] },
+      { navn: "Rold", tekst: "Landsby i den vestlige del af skoven – herfra mod vest tilbage til Aars.", pos: [56.7731, 9.8146] }
+    ],
+    kilder: [
+      { navn: "Naturstyrelsen: Folder om Rold Skov (PDF)", url: "https://naturstyrelsen.dk/media/pchn20ur/folder-rold-skov.pdf" },
+      { navn: "Rebildporten: Store Blåkilde", url: "https://www.rebildporten.com/guest/planlaeg-din-tur/store-blakilde-gdk679498" },
+      { navn: "Lex.dk: Rold Skov", url: "https://lex.dk/Rold_Skov" }
+    ]
+  },
+  {
+    id: "hobro-hald-soe",
+    navn: "Hald Sø & Dollerup Bakker",
+    region: "Midtjylland",
+    hjem: "Hobro",
+    vejtype: ["bakket", "landevej"],
+    start: "Hobro", slut: "Hobro (rundtur)",
+    beskrivelse:
+      "Fra Hobro mod vest over Møldrup til Viborg og ud til Hald Sø, hvor vejen snor sig gennem Dollerup Bakker forbi Niels Bugges Kro. Hjem via Rødkærsbro og Bjerringbro. " +
+      "Ingen motorvej. Bakkerne omkring Hald Sø giver sving og stigninger på den sidste del mod Dollerup.",
+    stop: [
+      { navn: "Viborg", tekst: "Domkirkeby ved Viborgsøerne – god til en pause.", pos: [56.4507, 9.4094] },
+      { navn: "Hald Ege og Hald Hovedgård", tekst: "Hald Sø er en af Danmarks reneste søer. Herregården Hald ligger ved søen midt i området De fem Halder.", pos: [56.4109, 9.3526] },
+      { navn: "Niels Bugges Kro", tekst: "Kro i Dollerup Bakker, som har været fredet siden 1947. Borgbanken Gammel Hald ligger tæt ved.", pos: [56.3887, 9.3377] },
+      { navn: "Bjerringbro", tekst: "By ved Gudenåen – herfra mod nord tilbage til Hobro.", pos: [56.3751, 9.6580] }
+    ],
+    kilder: [
+      { navn: "Naturstyrelsen: Hald Sø – Dollerup (PDF)", url: "https://naturstyrelsen.dk/media/hach5phi/7_hald-soe-dollerup_web_220620.pdf" },
+      { navn: "Naturstyrelsen: Hald Sø – Hald Hovedgård (PDF)", url: "https://naturstyrelsen.dk/media/ltgg4zmn/133_hald-soe-hald-hovedgaard_web_220620.pdf" },
+      { navn: "VisitDenmark: De fem Halder ved Viborg", url: "https://www.visitdenmark.com/denmark/plan-your-trip/de-fem-halder-the-five-halds-near-viborg-gdk806465" }
+    ]
+  },
+  {
+    id: "hobro-als-odde",
+    navn: "Als Odde & Kattegat",
+    region: "Nordjylland",
+    hjem: "Hobro",
+    vejtype: ["kyst", "landevej"],
+    start: "Hobro", slut: "Hobro (rundtur)",
+    beskrivelse:
+      "Fra Hobro langs Mariager Fjord til Hadsund og videre ud til Als Odde, hvor fjorden møder Kattegat. Op langs kysten til havnen i Øster Hurup og hjem over Terndrup. " +
+      "Åbne landeveje, kystudsigt og ingen motorvej.",
+    stop: [
+      { navn: "Hadsund", tekst: "Fjordby med klapbro, havn og caféer.", pos: [56.7168, 10.1147] },
+      { navn: "Als Odde", tekst: "Himmerlands sydøstligste spids, hvor Mariager Fjord løber ud i Kattegat. Lille havn for både og fiskerbåde.", pos: [56.7251, 10.3065] },
+      { navn: "Øster Hurup", tekst: "Havneby ved Kattegat med en af Danmarks bedste børnevenlige strande.", pos: [56.8040, 10.2727] },
+      { navn: "Terndrup", tekst: "Landsby på vejen tilbage gennem Himmerland mod Hobro.", pos: [56.8154, 10.0584] }
+    ],
+    kilder: [
+      { navn: "VisitHimmerland: Mariagerfjord og Øster Hurup", url: "https://www.visithimmerland.eu/mariagerfjord" },
+      { navn: "VisitDenmark: Als, Als Odde og Helberskov", url: "https://www.visitdenmark.nl/daenemark/explore/als-als-odde-helberskov-gdk1104502" },
+      { navn: "VisitHimmerland: Øster Hurup", url: "https://www.visithimmerland.eu/oster-hurup/attractions" }
+    ]
+  },
+  {
+    id: "randers-fussingoe",
+    navn: "Fussingø & Tjele Langsø",
+    region: "Midtjylland",
+    hjem: "Randers",
+    vejtype: ["landevej", "bakket"],
+    start: "Randers", slut: "Randers (rundtur)",
+    beskrivelse:
+      "Fra Randers mod vest til Fussingø Slot og Naturnationalpark Fussingø, videre til Tjele Langsø og ned til Bjerringbro ved Gudenåen. Hjem langs Gudenådalen via Langå. " +
+      "Rolige veje gennem skov, sø og ådal – ingen motorvej.",
+    stop: [
+      { navn: "Fussingø Slot", tekst: "Renæssanceslot fra 1540 ved Fussing Sø, i dag statsejet. Danmarks første naturnationalpark med kvæg og kronhjorte ligger rundt om.", pos: [56.4619, 9.8433] },
+      { navn: "Tjele Langsø", tekst: "Sø ved Tjele vest for Randers – flot at køre forbi.", pos: [56.5249, 9.5861] },
+      { navn: "Bjerringbro", tekst: "By ved Gudenåen – god til frokost.", pos: [56.3751, 9.6580] },
+      { navn: "Langå", tekst: "Stationsby i Gudenådalen på vejen tilbage til Randers.", pos: [56.3907, 9.8951] }
+    ],
+    kilder: [
+      { navn: "VisitDenmark: Naturnationalpark Fussingø", url: "https://www.visitdenmark.com/denmark/plan-your-trip/nature-national-park-fussingo-gdk622724" },
+      { navn: "VisitDenmark: Fussingø Slot", url: "https://www.visitdenmark.com/denmark/plan-your-trip/fussingo-castle-gdk622723" },
+      { navn: "VisitDenmark: Cykelrute Fussingø og Læsten Bakker", url: "https://www.visitdenmark.com/denmark/plan-your-trip/cycling-route-fussingo-and-laesten-bakker-gdk1117833" }
+    ]
+  },
+  {
+    id: "randers-mols",
+    navn: "Mols Bjerge & Kalø",
+    region: "Midtjylland",
+    hjem: "Randers",
+    vejtype: ["bakket", "kyst"],
+    start: "Randers", slut: "Randers (rundtur)",
+    beskrivelse:
+      "Fra Randers mod sydøst til Rønde og Kalø Vig, ind i Nationalpark Mols Bjerge via den gamle mølleby Femmøller og Knebel, og hjem over Ryomgård og Auning. " +
+      "Bakket nationalparklandskab med udsigt over vigene. Ingen motorvej.",
+    stop: [
+      { navn: "Kalø Slotsruin", tekst: "Ca. 700 år gammel borgruin på en tange ude i Kalø Vig. Parkér ved Kalø og gå ud ad dæmningen.", pos: [56.2935, 10.4800] },
+      { navn: "Femmøller", tekst: "Mølleby, der oprindeligt havde fem vandmøller – fire mølledamme er bevaret.", pos: [56.2406, 10.5749] },
+      { navn: "Knebel og Agri Bavnehøj", tekst: "Fra Knebel er der en kort afstikker via Agri til Agri Bavnehøj – det højeste punkt i Mols Bjerge, 137 m over havet.", pos: [56.2142, 10.4874] },
+      { navn: "Ryomgård", tekst: "Stationsby på vejen nordpå tilbage mod Randers.", pos: [56.3812, 10.5010] }
+    ],
+    kilder: [
+      { navn: "Nationalpark Mols Bjerge: Mols Bjerge", url: "https://eng.nationalparkmolsbjerge.dk/experience-the-national-park/mols-bjerge" },
+      { navn: "Nationalpark Mols Bjerge: Rutebeskrivelse Kalø-etapen (PDF)", url: "https://nationalparkmolsbjerge.dk/media/cnff3tqj/rutebeskrivelse-kaloeetapen.pdf" },
+      { navn: "Opdag Danmark: Kalø Slotsruin", url: "https://www.opdagdanmark.dk/en/oplevelser/kaloe-slotsruin/" }
+    ]
+  },
   /* ---------- Øvrige ruter i Danmark ---------- */
   {
     id: "margueritruten-soehoejlandet",
