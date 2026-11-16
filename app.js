@@ -146,7 +146,14 @@ async function renderRuter() {
 
   view.querySelectorAll(".chips").forEach((row) => row.addEventListener("click", (e) => {
     const b = e.target.closest(".chip"); if (!b) return;
-    filters[row.dataset.filter] = b.dataset.val;
+    const navn = row.dataset.filter;
+    filters[navn] = b.dataset.val;
+    // "Rundtur fra" og "Region" kan modsige hinanden (fx Aars + Midtjylland). Så nulstilles den anden.
+    const anden = navn === "hjem" ? "region" : navn === "region" ? "hjem" : "";
+    if (anden && filters[anden] && !filtered().length) {
+      filters[anden] = "";
+      toast(anden === "region" ? "Region nulstillet, så ruterne fra " + filters.hjem + " vises" : "\"Rundtur fra\" nulstillet");
+    }
     lsSet("mcapp.filters", filters);
     const y = view.scrollTop;
     renderRuter().then(() => { view.scrollTop = y; });
@@ -155,16 +162,17 @@ async function renderRuter() {
 
   destroyMap();
   map = makeMap($("#map"));
-  const shown = list.length ? list : ROUTES;
+  // Kortet viser kun de ruter, der matcher filtrene (ingen match = tomt Danmarkskort)
   const group = L.featureGroup();
-  shown.forEach((r) => {
+  list.forEach((r) => {
     const pl = L.polyline(r.line, { color: COLORS[ROUTES.indexOf(r) % COLORS.length], weight: 5, opacity: 0.9 });
     pl.bindTooltip(r.navn);
     pl.on("click", () => { location.hash = "#rute/" + r.id; });
     group.addLayer(pl);
   });
   group.addTo(map);
-  map.fitBounds(group.getBounds(), { padding: [20, 20] });
+  if (list.length) map.fitBounds(group.getBounds(), { padding: [20, 20] });
+  else map.fitBounds([[54.55, 8.07], [57.75, 12.69]]);
 }
 
 async function renderRute(id) {
