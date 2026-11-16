@@ -83,7 +83,20 @@ function kortLag() {
 
 function makeMap(el) {
   const m = L.map(el, { zoomControl: false, attributionControl: true });
-  kortLag().addTo(m);
+  const lag = kortLag().addTo(m);
+  // Afviser Mapbox fliserne (fx nøgle/adresse), skiftes der til OpenStreetMap, så kortet aldrig er tomt.
+  if (window.MAPBOX_TOKEN) {
+    let ok = 0, fejl = 0;
+    lag.on("tileload", () => ok++);
+    lag.on("tileerror", () => {
+      if (++fejl >= 4 && ok === 0 && m.hasLayer(lag)) {
+        m.removeLayer(lag);
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(m);
+      }
+    });
+  }
   L.control.zoom({ position: "topright" }).addTo(m);
   return m;
 }

@@ -1,7 +1,7 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v19";
+const VERSION = "v20";
 const SHELL = `mcapp-shell-${VERSION}`;
-const TILES = "mcapp-tiles";
+const TILES = "mcapp-tiles-2"; // nyt navn: smider evt. afviste Mapbox-fliser fra v18/v19 ud
 const MAX_TILES = 1500;
 
 const SHELL_FILES = [
@@ -37,7 +37,7 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys()
-      .then((keys) => Promise.all(keys.filter((k) => k.startsWith("mcapp-shell-") && k !== SHELL).map((k) => caches.delete(k))))
+      .then((keys) => Promise.all(keys.filter((k) => (k.startsWith("mcapp-shell-") && k !== SHELL) || (k.startsWith("mcapp-tiles") && k !== TILES)).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
@@ -60,7 +60,12 @@ self.addEventListener("fetch", (e) => {
         const hit = await c.match(req);
         if (hit) return hit;
         try {
-          const res = await fetch(req);
+          // Mapbox-nøglen er låst til appens adresse. Nogle mobilbrowsere sender ikke adressen med på
+          // billeder, så service workeren henter selv flisen med hele adressen som referer (og CORS,
+          // så en afvisning kan ses og ikke bliver gemt).
+          const res = url.hostname === "api.mapbox.com"
+            ? await fetch(req.url, { mode: "cors", credentials: "omit", referrer: self.registration.scope, referrerPolicy: "no-referrer-when-downgrade" })
+            : await fetch(req);
           if (res.ok || res.type === "opaque") { c.put(req, res.clone()); trimTiles(); }
           return res;
         } catch {
