@@ -15,13 +15,51 @@ const UNDERLAG = {
   "": { navn: "Blandet", tekst: "Mest asfalt, men en kort grusvej kan komme med." },
   grus: { navn: "Gerne grus", tekst: "Søger grusveje, som man må køre på med motorcykel (ifølge OpenStreetMap). Tjek altid skilte." }
 };
-// Startsteder i Midt- og Nordjylland hvor testkørsler fandt flest grusveje med adgang (OpenStreetMap, nov. 2026)
+// Startsteder i Midt- og Nordjylland hvor testkørsler fandt flest grusveje med adgang (OpenStreetMap)
 const GRUS_OMRAADER = {
   "Fjerritslev": [57.088, 9.267], "Nørre Vorupør": [56.953, 8.375], "Harboøre": [56.617, 8.176],
   "Thisted": [56.955, 8.691], "Bindslev": [57.542, 10.198], "Hirtshals": [57.591, 9.956],
   "Sæby": [57.335, 10.518], "Dokkedal": [56.904, 10.254], "Fjellerup Strand": [56.515, 10.59],
   "Hald Ege": [56.411, 9.353], "Aars": [56.803, 9.518], "Hobro": [56.639, 9.79]
 };
+let grusVeje = null; // data/grus.json: [lat, lon, meter, skovvej] for lovlige grus-/skovveje ≥ 300 m
+async function hentGrus() {
+  if (!grusVeje) grusVeje = (await (await fetch("data/grus.json")).json()).veje;
+  return grusVeje;
+}
+
+function afstandKm(a, b) {
+  return Math.hypot((a[0] - b[0]) * 110.57, (a[1] - b[1]) * 111.32 * Math.cos((a[0] * Math.PI) / 180));
+}
+
+// Flyt rutepunkterne hen på grusveje i nærheden (lange og tætte foretrækkes, skovveje får lidt ekstra),
+// og læg en ekstra grusvej ind mellem hvert par punkter
+function grusPunkter(start, pts, radius, veje) {
+  const brugt = new Set();
+  const maks = Math.min(6, Math.max(2, radius * 0.45));
+  const naermest = (p) => {
+    let bedst = -1, bv = -Infinity;
+    for (let i = 0; i < veje.length; i++) {
+      const v = veje[i];
+      if (brugt.has(i) || Math.abs(v[0] - p[0]) > maks / 110 || Math.abs(v[1] - p[1]) > maks / 60) continue;
+      const d = afstandKm(p, v);
+      if (d > maks) continue;
+      const vaerdi = Math.min(v[2], 3000) / 1000 - d * 0.5 + (v[3] ? 0.5 : 0);
+      if (vaerdi > bv) { bv = vaerdi; bedst = i; }
+    }
+    if (bedst < 0) return p;
+    brugt.add(bedst);
+    return [veje[bedst][0], veje[bedst][1]];
+  };
+  const kaede = [start, ...pts, start], ud = [];
+  for (let i = 1; i < kaede.length; i++) {
+    const a = kaede[i - 1], b = kaede[i];
+    ud.push(naermest([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]));
+    if (i < kaede.length - 1) ud.push(naermest(b));
+  }
+  return ud;
+}
+
 const GRUS_FLADER = new Set(["compacted", "gravel", "dirt", "path"]);
 const RETNINGER = { "": "Tilfældig", N: "Nord", O: "Øst", S: "Syd", V: "Vest" };
 const RETNING_GRADER = { N: 0, O: 90, S: 180, V: 270 };
@@ -204,7 +242,9 @@ async function lavRute({ start, km, retning, stil = "", underlag = "", maksForsl
   const varianter = retning === ""
     ? Array.from({ length: antal }, (_, i) => (Math.random() * 72 + i * 72) % 360)
     : (mange ? [-35, -15, 0, 15, 35] : [-25, 0, 25]).slice(0, maksForslag || undefined).map((d) => (RETNING_GRADER[retning] + d + 360) % 360);
-  const n = (km < 60 ? 3 : km < 150 ? 4 : 5) + (grus ? 1 : 0); // flere punkter = flere chancer for at ramme grusveje
+  // Grus: 3 punkter + en grusvej mellem hvert par = 7 mellempunkter (Valhalla tillader højst 10 i alt)
+  const n = grus ? 3 : km < 60 ? 3 : km < 150 ? 4 : 5;
+  const veje = grus ? await hentGrus().catch(() => null) : null;
   let radius = km / (2 * Math.PI * 1.3);
   const kandidater = [];
   for (let v = 0; v < varianter.length; v++) {
@@ -212,7 +252,9 @@ async function lavRute({ start, km, retning, stil = "", underlag = "", maksForsl
     let res = null;
     for (let forsoeg = 0; forsoeg < (mange ? 2 : 3); forsoeg++) {
       onProgress && onProgress(`Beregner forslag ${v + 1} af ${varianter.length}…`);
-      res = await osrmRute([start, ...cirkelPunkter(start, radius, grader, n), start], underlag);
+      let mellem = cirkelPunkter(start, radius, grader, n);
+      if (veje) mellem = grusPunkter(start, mellem, radius, veje);
+      res = await osrmRute([start, ...mellem, start], underlag);
       const afv = Math.abs(res.km - km) / km;
       radius *= km / res.km; // lær af resultatet – også til de næste forslag
       if (afv <= 0.1) break;
