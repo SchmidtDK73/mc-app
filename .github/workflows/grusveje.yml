@@ -1,0 +1,40 @@
+# Henter grus- og skovveje fra OpenStreetMap én gang om måneden og opdaterer data/grus.json
+name: Opdater grusveje
+on:
+  schedule:
+    - cron: "17 3 1 * *"   # d. 1. i måneden kl. 03:17 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+jobs:
+  grus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Hent fra OpenStreetMap
+        run: python3 tools/hent_grus.py /tmp/raa.json
+      - name: Lav data/grus.json
+        run: |
+          gammel=$(python3 -c "import json;print(len(json.load(open('data/grus.json'))['veje']))")
+          python3 tools/lav_grus.py /tmp/raa.json /tmp/grus.json
+          ny=$(python3 -c "import json;print(len(json.load(open('/tmp/grus.json'))['veje']))")
+          echo "Før: $gammel veje, nu: $ny"
+          # Værn: hvis der pludselig mangler mere end 30 %, er noget gået galt – behold den gamle
+          if [ "$ny" -lt $((gammel * 7 / 10)) ]; then echo "For få veje – springer over"; exit 1; fi
+          cp /tmp/grus.json data/grus.json
+      - name: Gem og udgiv hvis ændret
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet data/grus.json; then echo "Ingen ændringer"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Opdater grusveje fra OpenStreetMap" data/grus.json
+          git push
+          # Push fra Actions starter ikke selv en ny Pages-udrulning
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" || true
