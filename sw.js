@@ -1,5 +1,5 @@
 // Service worker: app-skal caches ved installation, kortfliser caches efterhånden som de vises.
-const VERSION = "v28";
+const VERSION = "v29";
 const SHELL = `mcapp-shell-${VERSION}`;
 const TILES = "mcapp-tiles-2"; // nyt navn: smider evt. afviste Mapbox-fliser fra v18/v19 ud
 const MAX_TILES = 1500;

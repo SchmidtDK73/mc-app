@@ -278,25 +278,27 @@ async function initBenzin(km) {
   const pris = await hentBenzinPris();
   const vis = () => {
     const kml = parseFloat(String(v.kml).replace(",", "."));
-    const lpris = pris && pris.priser ? pris.priser[v.oktan] : null;
     const tal = $("#benzinTal");
     if (!(kml > 0)) { tal.innerHTML = `<div>Forbrug</div><div class="muted">Tast km/l</div>`; }
     else {
       const liter = km / kml;
+      // Begge oktantal vises, så forskellen altid kan ses; det valgte er markeret
       tal.innerHTML = `<div>Forbrug på ${km} km</div><div>${kr(liter, 1)} l</div>` +
-        (lpris ? `<div>Pris (${kr(lpris)} kr/l)</div><div>ca. ${kr(Math.round(liter * lpris), 0)} kr</div>` : `<div>Pris</div><div class="muted">ingen benzinpris</div>`);
+        (pris && pris.priser ? ["95", "100"].map((o) => {
+          const valgt = o === v.oktan, lp = pris.priser[o];
+          return lp ? `<div${valgt ? "" : ' style="opacity:.6"'}>${valgt ? "✓ " : ""}${o} oktan (${kr(lp)} kr/l)</div><div${valgt ? "" : ' style="opacity:.6;font-weight:400"'}>ca. ${kr(Math.round(liter * lp), 0)} kr</div>` : "";
+        }).join("") : `<div>Pris</div><div class="muted">ingen benzinpris</div>`);
     }
-    $("#benzinKilde").textContent = pris && pris.priser ? `Listepris for ${v.oktan} oktan fra OK, senest ændret ${new Date(pris.dato).toLocaleDateString("da-DK", { day: "numeric", month: "long" })}. Prisen ved standeren kan være lavere.` : "Benzinprisen kunne ikke hentes.";
+    $("#benzinKilde").textContent = pris && pris.priser ? `Listepriser fra OK, senest ændret ${new Date(pris.dato).toLocaleDateString("da-DK", { day: "numeric", month: "long" })}. Prisen ved standeren kan være lavere.` : "Benzinprisen kunne ikke hentes.";
   };
   // Tekstfelt (ikke type=number): iPhonens danske tastatur giver komma, som et talfelt afviser
   $("#kml").oninput = (e) => { v.kml = e.target.value.replace(/[^0-9.,]/g, ""); if (e.target.value !== v.kml) e.target.value = v.kml; lsSet(BENZIN_KEY, v); vis(); };
   $("#kml").onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
-  $("#oktanChips").onclick = (e) => {
-    const b = e.target.closest(".chip"); if (!b) return;
+  boks.querySelectorAll("#oktanChips .chip").forEach((b) => (b.onclick = () => {
     v.oktan = b.dataset.oktan; lsSet(BENZIN_KEY, v);
     boks.querySelectorAll("#oktanChips .chip").forEach((c) => c.classList.toggle("on", c === b));
     vis();
-  };
+  }));
   vis();
 }
 
