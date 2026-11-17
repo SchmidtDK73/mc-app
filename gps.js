@@ -13,6 +13,8 @@ const kmMellem = ([a, b], [c, d]) => {
 };
 const fmtVarighed = (ms) => { const m = Math.floor(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)} t ${m % 60} min` : `${m} min`; };
 
+const placeringIkkeTilladt = () => "Placering er ikke tilladt – slå det til under Indstillinger › " + (window.mcNative ? "Apps › MC-app › Placering" : "Safari › Placering");
+
 /* ---------- 1) Min position på kortet ---------- */
 let posWatch = null, posLag = null, posFoelg = false;
 
@@ -58,7 +60,7 @@ function startPosition(m, knap) {
     foerste = false;
   }, (e) => {
     stopPosition(); knap.classList.remove("aktiv", "foelg");
-    toast(e.code === 1 ? "Placering er ikke tilladt – slå det til under Indstillinger › Safari › Placering" : "Kunne ikke finde din position");
+    toast(e.code === 1 ? placeringIkkeTilladt() : "Kunne ikke finde din position");
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 });
 }
 
@@ -74,32 +76,37 @@ async function holdSkaermTaendt() {
   try { if ("wakeLock" in navigator && !wakeLock && document.visibilityState === "visible") { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => (wakeLock = null)); } } catch { /* ikke understøttet */ }
 }
 
+// I iPhone-appen kommer punkter fra tiden med slukket skærm samlet (iBatch): gem og tegn kun én gang til sidst
+const iBatch = () => !!(window.mcNative && window.mcNative.iBatch);
+const opdaterOptag = (gem) => { if (iBatch()) return; if (gem) gemOptag(); visOptag(); };
+window.addEventListener("mcgps-batch", () => { if (optag) { gemOptag(); visOptag(); } });
+
 function nytPunkt(p) {
   if (!optag || optag.pauseFra) return;
   const { latitude: lat, longitude: lon, accuracy } = p.coords;
   sidsteFix = { acc: accuracy, t: Date.now() };
-  if (accuracy > 50) { visOptag(); return; } // for upræcist (fx lige efter start)
+  if (accuracy > 50) { opdaterOptag(); return; } // for upræcist (fx lige efter start)
   const ny = [Math.round(lat * 1e5) / 1e5, Math.round(lon * 1e5) / 1e5, p.timestamp || Date.now()];
   const forrige = optag.pkt[optag.pkt.length - 1];
   if (forrige) {
     const d = kmMellem(forrige, ny), timer = (ny[2] - forrige[2]) / 3600000;
-    if (d < 0.01) { visOptag(); return; }                  // under 10 m: GPS-støj, stå stille
+    if (d < 0.01) { opdaterOptag(); return; }              // under 10 m: GPS-støj, stå stille
     if (timer > 0 && d / timer > 250) {                     // urealistisk spring: afvis …
-      if (++afvist < 3) { visOptag(); return; }
-      optag.pkt.push(ny); afvist = 0; gemOptag(); visOptag(); return; // … men 3 i træk = det forrige punkt var forkert; start forfra herfra uden km
+      if (++afvist < 3) { opdaterOptag(); return; }
+      optag.pkt.push(ny); afvist = 0; opdaterOptag(true); return; // … men 3 i træk = det forrige punkt var forkert; start forfra herfra uden km
     }
     afvist = 0;
     if (ny[2] - forrige[2] > 60000 && d > 0.3) optag.gabKm += d; // hul (skærm slukket): lige linje
     optag.km += d;
   }
-  optag.pkt.push(ny); gemOptag(); visOptag();
+  optag.pkt.push(ny); opdaterOptag(true);
 }
 
 function startGps() {
   if (optagWatch != null || !optag) return;
   optagWatch = navigator.geolocation.watchPosition(nytPunkt, (e) => {
-    if (e.code === 1) { toast("Placering er ikke tilladt – slå det til under Indstillinger › Safari › Placering"); stopGps(); }
-  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000 });
+    if (e.code === 1) { toast(placeringIkkeTilladt()); stopGps(); }
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 30000, baggrund: true }); // baggrund: kun iPhone-appen (fortsætter med slukket skærm)
   holdSkaermTaendt();
   clearInterval(optagTimer); optagTimer = setInterval(visOptag, 1000);
   visOptagMaerke();
@@ -112,6 +119,9 @@ function stopGps() {
   wakeLock = null; visOptagMaerke();
 }
 
+// I iPhone-appen: fortsæt en igangværende optagelse med det samme, når appen (gen)starter
+if (window.mcNative && optag && !optag.slut && !optag.pauseFra) setTimeout(startGps, 0);
+
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && optag && !optag.pauseFra) holdSkaermTaendt();
 });
@@ -119,7 +129,8 @@ document.addEventListener("visibilitychange", () => {
 function startOptagelse(ruteId) {
   if (!navigator.geolocation) { toast("Denne telefon har ikke GPS i browseren"); return; }
   optag = { start: Date.now(), rute: ruteId || "", pkt: [], km: 0, gabKm: 0, pauseMs: 0, pauseFra: null };
-  gemOptag(); startGps(); location.hash = "#optag";
+  gemOptag(); startGps();
+  if (location.hash === "#optag") renderOptag(); else location.hash = "#optag";
 }
 
 function pauseOptagelse() {
@@ -187,7 +198,9 @@ function renderOptag() {
     view.innerHTML = `
       <div class="card">
         <p style="margin-top:0">Appen måler, hvor langt du kører, hvor længe, og hvilken vej. Turen gemmes i dagbogen med benzinforbrug.</p>
-        <p class="muted">Vigtigt på iPhone: GPS virker kun, mens appen er åben og skærmen er tændt. Sæt telefonen i en holder, gerne med strøm. Appen forsøger selv at holde skærmen tændt.</p>
+        <p class="muted">${window.mcNative
+          ? "GPS'en bliver ved, også når skærmen er slukket eller du bruger andre apps, til du selv stopper optagelsen. En blå markering øverst på skærmen viser, at den kører."
+          : "Vigtigt på iPhone: GPS virker kun, mens appen er åben og skærmen er tændt. Sæt telefonen i en holder, gerne med strøm. Appen forsøger selv at holde skærmen tændt."}</p>
       </div>
       <div class="btn-row"><button class="btn block" id="startOpt">▶︎ Start optagelse</button></div>`;
     $("#startOpt").onclick = () => startOptagelse("");

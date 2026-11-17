@@ -229,7 +229,7 @@ async function renderRute(id) {
       <a class="btn secondary" href="#ny-rute">Lav en ny</a>
     </div>` : ""}
     <div class="btn-row"><button class="btn secondary" id="gpxEksportBtn">⬇︎ Eksportér GPX-fil</button></div>
-    <div class="center-link"><a href="#" id="beelineHelp">Hvorfor står Beeline ikke i delingsarket?</a></div>
+    ${window.mcNative ? "" : `<div class="center-link"><a href="#" id="beelineHelp">Hvorfor står Beeline ikke i delingsarket?</a></div>`}
     <div class="btn-row">
       <button class="btn" id="optagBtn">▶︎ Kør turen med GPS</button>
       <button class="btn secondary" id="logTripBtn">Log tur i dagbogen</button>
@@ -244,10 +244,11 @@ async function renderRute(id) {
   `;
   if ($("#saveRouteBtn")) $("#saveRouteBtn").onclick = () => { gemEgenRute(r); toast("Ruten er gemt under Mine ruter"); renderRute(id); };
   if ($("#delRouteBtn")) $("#delRouteBtn").onclick = () => { if (confirm("Slet denne rute?")) { sletEgenRute(r.id); location.hash = "#ruter"; } };
-  $("#gpxBtn").addEventListener("click", () => beelineHjaelp(r));
+  // I iPhone-appen står Beeline direkte i delingsmenuen; i Safari skal man via Filer (se guiden)
+  $("#gpxBtn").addEventListener("click", () => (window.mcNative ? downloadGpx(r) : beelineHjaelp(r)));
   // Samme fil – på iPhone åbner delingsarket, hvor "Gem i Filer" eller en anden GPS-app kan vælges
   $("#gpxEksportBtn").addEventListener("click", () => downloadGpx(r));
-  $("#beelineHelp").addEventListener("click", (e) => { e.preventDefault(); beelineHjaelp(r); });
+  if ($("#beelineHelp")) $("#beelineHelp").addEventListener("click", (e) => { e.preventDefault(); beelineHjaelp(r); });
   $("#logTripBtn").addEventListener("click", () => editTrip(null, r.id));
   $("#optagBtn").addEventListener("click", () => {
     if (optag && !optag.slut) { location.hash = "#optag"; return; }
@@ -382,6 +383,8 @@ function beelineHjaelp(r) {
 
 async function downloadGpx(r) {
   const name = gpxFilnavn(r);
+  // I iPhone-appen: telefonens egen delingsmenu (her står Beeline, Garmin, Komoot osv.)
+  if (window.mcNative) { window.mcNative.del(name, gpxString(r)); return; }
   const blob = new Blob([gpxString(r)], { type: "application/gpx+xml" });
   // På iPhone giver delingsarket mulighed for at gemme i Filer eller åbne i en GPS-app
   try {
@@ -420,6 +423,7 @@ const numOrEmpty = (v) => (v === "" || v == null ? "" : Number(String(v).replace
 
 async function exportData() {
   const name = `mc-app-backup-${today()}.json`;
+  if (window.mcNative) { window.mcNative.del(name, JSON.stringify(DB, null, 2)); return; }
   const blob = new Blob([JSON.stringify(DB, null, 2)], { type: "application/json" });
   try {
     const file = new File([blob], name, { type: "application/json" });
