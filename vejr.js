@@ -134,12 +134,16 @@ async function renderVejr(forceRefresh) {
   const st = vejrState();
   if (!st.sted) {
     view.innerHTML = `
-      <div class="pad"><p>Vælg hvor du vil køre fra, så vurderer appen om det er MC-vejr.</p></div>
-      <div class="btn-row"><button class="btn block" id="gpsBtn">Brug min position</button></div>
+      <div class="vejr-start">
+        <div class="vejr-start-ikon">🏍️</div>
+        <h2>Er det MC-vejr i dag?</h2>
+        <p>Appen kigger på temperatur, regn, vind og glat føre og svarer ja, måske eller nej. Den husker dit valg til næste gang.</p>
+        <button class="btn block" id="gpsBtn">📍 Brug min position</button>
+      </div>
       <div class="section-title">Eller vælg en by</div>
-      <div class="card"><ul class="stops">${Object.keys(BYER).map((b) => `<li class="row" data-by="${esc(b)}" style="cursor:pointer"><span class="grow">${esc(b)}</span><span class="muted">›</span></li>`).join("")}</ul></div>`;
+      ${byGitter()}`;
     $("#gpsBtn").onclick = brugPosition;
-    view.querySelectorAll("[data-by]").forEach((li) => (li.onclick = () => saetSted({ navn: li.dataset.by, lat: BYER[li.dataset.by][0], lon: BYER[li.dataset.by][1] })));
+    vaelgByKlik(view);
     return;
   }
 
@@ -171,6 +175,12 @@ async function renderVejr(forceRefresh) {
       <div class="muted-light">MC-vejr ${a.label}? · ${esc(st.sted.navn)}</div>
       <div class="verdict-word">${s.ord}</div>
       <div>${s.tekst}</div>
+      <div class="verdict-fakta">
+        <span>${hyppigsteIkon(a.vindue)}</span>
+        <span>${Math.round(a.res.tMin)} til ${Math.round(a.res.tMax)} °C</span>
+        <span>💧 ${a.res.prob} %</span>
+        <span>💨 ${Math.round(a.res.wind)} m/s</span>
+      </div>
     </div>
     ${a.res.grunde.length ? `<div class="card">
       <ul class="stops">${a.res.grunde.map((g) => `<li class="row"><span class="status ${SVAR[g.niv].cls}"></span><span class="grow">${esc(g.tekst)}</span></li>`).join("")}</ul>
@@ -178,7 +188,7 @@ async function renderVejr(forceRefresh) {
     ${a.bedst && a.res.niv !== "ja" && a.vindue.some((h) => h.level !== "ja") ? `<div class="card"><b>Bedste tidsrum ${a.label}:</b> kl. ${a.bedst}</div>` : ""}
     <div class="card">
       <div class="kv">
-        <div>Temperatur</div><div>${f(a.res.tMin)}–${f(a.res.tMax)} °C</div>
+        <div>Temperatur</div><div>${f(a.res.tMin)} til ${f(a.res.tMax)} °C</div>
         <div>Nedbør i alt</div><div>${f(a.res.precip)} mm</div>
         <div>Max regnrisiko</div><div>${a.res.prob} %</div>
         <div>Vind / stød</div><div>${f(a.res.wind)} / ${f(a.res.gust)} m/s</div>
@@ -201,7 +211,24 @@ async function renderVejr(forceRefresh) {
     <p class="muted pad">Hentet ${hentet}. Vejrdata fra <a href="https://open-meteo.com/" target="_blank" rel="noopener" style="color:var(--accent)">Open-Meteo</a>. Vurderingen er vejledende – kig altid selv på vejen og vejret.</p>
   `;
   $("#refreshBtn").onclick = () => renderVejr(true);
-  $("#stedBtn").onclick = () => { st.sted = null; lsSet(VKEY, st); renderVejr(); };
+  $("#stedBtn").onclick = () => openSheet(`
+    <h2>Skift sted</h2>
+    <button class="btn block" id="gpsBtn2">📍 Brug min position</button>
+    <div class="filter-label" style="margin:16px 4px 6px">Eller vælg en by</div>
+    ${byGitter(st.sted.navn)}`, (sh) => { $("#gpsBtn2", sh).onclick = () => { closeSheet(); brugPosition(); }; vaelgByKlik(sh); });
+}
+
+function byGitter(valgt) {
+  return `<div class="bygitter">${Object.keys(BYER).map((b) => `<button class="chip ${b === valgt ? "on" : ""}" data-by="${esc(b)}">${esc(b)}</button>`).join("")}</div>`;
+}
+function vaelgByKlik(el) {
+  el.querySelectorAll("[data-by]").forEach((b) => (b.onclick = () => { closeSheet(); saetSted({ navn: b.dataset.by, lat: BYER[b.dataset.by][0], lon: BYER[b.dataset.by][1] }); }));
+}
+
+// Det vejr-ikon, der passer bedst på køretiden (det hyppigste)
+function hyppigsteIkon(hours) {
+  const c = {}; hours.forEach((h) => { const i = wxIcon(h.code); c[i] = (c[i] || 0) + 1; });
+  return Object.entries(c).sort((a, b) => b[1] - a[1])[0][0];
 }
 
 function saetSted(sted) {

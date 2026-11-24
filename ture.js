@@ -49,7 +49,14 @@ function renderDagbog() {
         <div><div class="stat">${sum(ture).toLocaleString("da-DK")}</div><div class="muted">km i alt</div></div>
       </div>
     </div>
-    <div class="btn-row"><button class="btn" id="optagNy">▶︎ Optag tur med GPS</button></div>
+    <button class="optag-stor" id="optagNy">
+      <span class="optag-prik"></span>
+      ${typeof optag !== "undefined" && optag && !optag.slut
+        ? `<span class="grow"><b>Optagelse i gang</b><span>Tryk for at se turen</span></span>`
+        : `<span class="grow"><b>Optag tur med GPS</b><span>Måler km, tid og spor, mens du kører</span></span>`}
+      <span class="pil">›</span>
+    </button>
+    <div class="btn-row" style="margin-top:0"><button class="btn secondary block" id="nyTur">＋ Skriv en tur ind selv</button></div>
     ${ture.length ? ture.map((t) => `
       <button class="card" data-trip="${t.id}">
         <div class="row">
@@ -60,22 +67,17 @@ function renderDagbog() {
           </div>
           <span class="muted" style="font-size:22px">›</span>
         </div>
-      </button>`).join("") : `<div class="empty">Ingen ture endnu. Tryk på + for at logge din første tur.</div>`}
-    <div class="section-title">Backup</div>
-    <div class="card">
-      <div class="muted">Ture, pakkelister og egne ruter gemmes kun på denne telefon. Tag en backup en gang imellem.</div>
-      <div class="btn-row" style="margin:10px 0 0">
-        <button class="btn secondary" id="exportBtn">Backup</button>
-        <button class="btn secondary" id="importBtn">Gendan</button>
-      </div>
+      </button>`).join("") : `<div class="empty">Ingen ture endnu. Optag din næste tur, eller skriv en tidligere tur ind.</div>`}
+    <div class="backup-linje">
+      <span>Dine data ligger kun på denne telefon.</span>
+      <span><a href="#" id="exportBtn">Tag backup</a> · <a href="#" id="importBtn">Gendan</a></span>
       <input type="file" id="importFile" accept="application/json,.json" class="hidden">
     </div>
-    <button class="fab" id="fab" aria-label="Ny tur">+</button>
   `;
-  $("#fab").onclick = () => editTrip(null);
+  $("#nyTur").onclick = () => editTrip(null);
   $("#optagNy").onclick = () => { location.hash = "#optag"; };
-  $("#exportBtn").onclick = exportData;
-  $("#importBtn").onclick = () => $("#importFile").click();
+  $("#exportBtn").onclick = (e) => { e.preventDefault(); exportData(); };
+  $("#importBtn").onclick = (e) => { e.preventDefault(); $("#importFile").click(); };
   $("#importFile").onchange = (e) => importData(e, renderDagbog);
   view.querySelectorAll("[data-trip]").forEach((b) => (b.onclick = () => editTrip(DB.ture.find((t) => t.id === b.dataset.trip))));
 }

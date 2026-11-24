@@ -386,3 +386,52 @@ label.field input:focus, label.field select:focus, label.field textarea:focus { 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :root { --glass: var(--card); --glass-strong: var(--card); }
 }
+
+/* =====================================================================
+   Pænere faner (nov. 2026): filtre bag én knap, rutetegninger, vejr-start, stor optag-knap
+   ===================================================================== */
+.filterbar { padding-top: 2px; }
+.filterknap { display: inline-flex; align-items: center; gap: 6px; }
+.filterknap svg { width: 18px; height: 18px; fill: currentColor; }
+.chip.ryd { display: inline-flex; align-items: center; gap: 6px; }
+.chip.ryd span { font-size: 12px; opacity: .55; }
+.sheet .chips { padding-left: 0; padding-right: 0; }
+.sheet .filter-label { margin-left: 2px; }
+
+.rute-mini {
+  flex: none; width: 56px; height: 56px; border-radius: 16px; display: block;
+  background: color-mix(in srgb, var(--c, var(--accent)) 12%, var(--bg));
+}
+.rute-mini svg { width: 56px; height: 56px; display: block; }
+.rute-mini path { fill: none; stroke: var(--c, var(--accent)); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+
+.vejr-start {
+  margin: 14px 16px 4px; padding: 26px 20px 20px; border-radius: 30px; text-align: center; color: #fff;
+  background: linear-gradient(160deg, #5ac8fa, #0a6fd6); box-shadow: 0 10px 30px rgba(0, 0, 0, .15);
+}
+.vejr-start-ikon { font-size: 52px; line-height: 1; }
+.vejr-start h2 { margin: 10px 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
+.vejr-start p { margin: 0 0 18px; opacity: .92; font-size: 15px; }
+.vejr-start .btn { background: #fff; color: #0a6fd6; box-shadow: 0 4px 14px rgba(0, 0, 0, .15); }
+.bygitter { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 16px 8px; }
+.sheet .bygitter { padding: 0; }
+.verdict-fakta { display: flex; justify-content: center; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.verdict-fakta span { background: rgba(255, 255, 255, .22); border-radius: 999px; padding: 4px 11px; font-size: 14px; font-weight: 600; }
+
+.optag-stor {
+  display: flex; align-items: center; gap: 14px; width: calc(100% - 32px); margin: 0 16px 10px; padding: 18px;
+  border: 0; border-radius: var(--r); font: inherit; color: #fff; text-align: left;
+  background: linear-gradient(160deg, #ff8a4c, var(--accent) 55%, var(--accent2));
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 35%, transparent); transition: transform .15s;
+}
+.optag-stor:active { transform: scale(.98); }
+.optag-stor b { display: block; font-size: 19px; }
+.optag-stor .grow span { font-size: 14px; opacity: .9; }
+.optag-stor .pil { font-size: 28px; opacity: .8; }
+.optag-prik { flex: none; width: 44px; height: 44px; border-radius: 50%; background: rgba(255, 255, 255, .25); position: relative; }
+.optag-prik::after { content: ""; position: absolute; inset: 13px; border-radius: 50%; background: #fff; }
+.backup-linje { display: flex; flex-direction: column; align-items: center; gap: 2px; margin: 26px 16px 8px; font-size: 13px; color: var(--muted); text-align: center; }
+.backup-linje a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.filterbar + .section-title { margin-top: 14px; }
+.sheet { background: color-mix(in srgb, var(--card) 96%, transparent); }
+.sheet .card { background: var(--bg); }

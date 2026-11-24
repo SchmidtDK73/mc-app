@@ -128,10 +128,71 @@ function chipRow(name, options, allLabel) {
   </div>`;
 }
 
+/* ---------- Filtre: én knap og et ark i stedet for fire rækker ---------- */
+const FILTER_NAVNE = { hjem: "Rundtur fra", region: "Region", laengde: "Længde", vejtype: "Vejtype" };
+function filterTekst(navn, v) { return navn === "hjem" ? "Fra " + v : navn === "laengde" ? LAENGDER[v] : navn === "vejtype" ? VEJTYPER[v] : v; }
+function filterBar() {
+  const aktive = Object.keys(FILTER_NAVNE).filter((n) => filters[n]);
+  return `<div class="chips filterbar">
+    <button class="chip filterknap ${aktive.length ? "on" : ""}" id="filterKnap">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18v2H3V6Zm3 5h12v2H6v-2Zm3 5h6v2H9v-2Z"/></svg>Filtre${aktive.length ? ` · ${aktive.length}` : ""}
+    </button>
+    ${aktive.map((n) => `<button class="chip ryd" data-ryd="${n}" aria-label="Fjern filter ${esc(filterTekst(n, filters[n]))}">${esc(filterTekst(n, filters[n]))} <span>✕</span></button>`).join("")}
+  </div>`;
+}
+function opdaterFiltre() {
+  lsSet("mcapp.filters", filters);
+  const y = view.scrollTop;
+  return renderRuter().then(() => { view.scrollTop = y; });
+}
+function aabnFiltre() {
+  const regions = Object.fromEntries([...new Set(ROUTES.map((r) => r.region))].sort().map((r) => [r, r]));
+  const tegn = () => {
+    const n = filtered().length;
+    sheet.innerHTML = `
+      <h2>Filtre</h2>
+      <div class="filter-label">Rundtur fra</div>${chipRow("hjem", { Aars: "Aars", Hobro: "Hobro", Randers: "Randers" }, "Alle")}
+      <div class="filter-label">Region</div>${chipRow("region", regions, "Hele landet")}
+      <div class="filter-label">Længde</div>${chipRow("laengde", LAENGDER, "Alle")}
+      <div class="filter-label">Vejtype</div>${chipRow("vejtype", VEJTYPER, "Alle")}
+      <div class="btn-row" style="margin:18px 0 0">
+        <button class="btn secondary" id="nulstil">Nulstil</button>
+        <button class="btn" id="visRuter">Vis ${n} ${n === 1 ? "rute" : "ruter"}</button>
+      </div>`;
+    sheet.querySelectorAll(".chips").forEach((row) => row.addEventListener("click", (e) => {
+      const b = e.target.closest(".chip"); if (!b) return;
+      const navn = row.dataset.filter;
+      filters[navn] = b.dataset.val;
+      // "Rundtur fra" og "Region" kan modsige hinanden (fx Aars + Midtjylland). Så nulstilles den anden.
+      const anden = navn === "hjem" ? "region" : navn === "region" ? "hjem" : "";
+      if (anden && filters[anden] && !filtered().length) {
+        filters[anden] = "";
+        toast(anden === "region" ? "Region nulstillet, så ruterne fra " + filters.hjem + " vises" : "\"Rundtur fra\" nulstillet");
+      }
+      const x = sheet.scrollTop; opdaterFiltre(); tegn(); sheet.scrollTop = x;
+    }));
+    $("#nulstil", sheet).onclick = () => { Object.keys(FILTER_NAVNE).forEach((k) => (filters[k] = "")); opdaterFiltre(); tegn(); };
+    $("#visRuter", sheet).onclick = closeSheet;
+  };
+  openSheet("", tegn);
+}
+
+// Lille tegning af rutens forløb til listen (ingen kortfliser, virker offline)
+function ruteMini(line, farve) {
+  if (!line || line.length < 2) return `<span class="rute-mini"></span>`;
+  const step = Math.max(1, Math.floor(line.length / 120));
+  const pts = line.filter((_, i) => i % step === 0).concat([line[line.length - 1]]);
+  const k = Math.cos((pts[0][0] * Math.PI) / 180);
+  const xs = pts.map((p) => p[1] * k), ys = pts.map((p) => -p[0]);
+  const x0 = Math.min(...xs), y0 = Math.min(...ys), w = Math.max(...xs) - x0 || 1e-6, h = Math.max(...ys) - y0 || 1e-6;
+  const S = 44, sk = S / Math.max(w, h), ox = (S - w * sk) / 2 + 6, oy = (S - h * sk) / 2 + 6;
+  const d = pts.map((p, i) => `${i ? "L" : "M"}${((xs[i] - x0) * sk + ox).toFixed(1)} ${((ys[i] - y0) * sk + oy).toFixed(1)}`).join("");
+  return `<span class="rute-mini" style="--c:${farve}"><svg viewBox="0 0 56 56" aria-hidden="true"><path d="${d}"/></svg></span>`;
+}
+
 async function renderRuter() {
   setHeader("Ruter");
   await loadGeometry();
-  const regions = Object.fromEntries([...new Set(ROUTES.map((r) => r.region))].sort().map((r) => [r, r]));
   const list = filtered();
   const mine = DB.mineRuter || [];
   view.innerHTML = `
@@ -140,18 +201,15 @@ async function renderRuter() {
     ${mine.length ? `<div class="section-title">Mine ruter</div>
     ${mine.map((r) => `
       <a class="card linkcard" href="#rute/${r.id}">
-        <div class="row"><div class="grow"><b>${esc(r.navn)}</b><div class="muted">${r.km} km · ca. ${fmtTid(r.min)} · gemt ${fmtDate(r.oprettet)}</div></div>
+        <div class="row">${ruteMini(r.line, "#f26322")}<div class="grow"><b>${esc(r.navn)}</b><div class="muted">${r.km} km · ca. ${fmtTid(r.min)} · gemt ${fmtDate(r.oprettet)}</div></div>
         <span class="muted" style="font-size:22px">›</span></div>
       </a>`).join("")}` : ""}
-    <div class="filter-label">Rundtur fra</div>${chipRow("hjem", { Aars: "Aars", Hobro: "Hobro", Randers: "Randers" }, "Alle")}
-    <div class="filter-label">Region</div>${chipRow("region", regions, "Hele landet")}
-    <div class="filter-label">Længde</div>${chipRow("laengde", LAENGDER, "Alle")}
-    <div class="filter-label">Vejtype</div>${chipRow("vejtype", VEJTYPER, "Alle")}
+    ${filterBar()}
     <div class="section-title">${list.length} ${list.length === 1 ? "rute" : "ruter"}</div>
     ${list.length ? list.map((r) => `
       <button class="card" data-route="${r.id}">
         <div class="row">
-          <span class="status" style="background:${COLORS[ROUTES.indexOf(r) % COLORS.length]}"></span>
+          ${ruteMini(r.line, COLORS[ROUTES.indexOf(r) % COLORS.length])}
           <div class="grow">
             <h3>${esc(r.navn)}</h3>
             <div class="muted">${esc(r.region)} · ${r.km} km · ca. ${fmtTid(r.min)}</div>
@@ -163,20 +221,8 @@ async function renderRuter() {
     <p class="muted pad">Ruteforløb er beregnet på OpenStreetMap-veje. Tjek altid skiltning og lokale forhold – veje kan være lukkede eller ændrede.</p>
   `;
 
-  view.querySelectorAll(".chips").forEach((row) => row.addEventListener("click", (e) => {
-    const b = e.target.closest(".chip"); if (!b) return;
-    const navn = row.dataset.filter;
-    filters[navn] = b.dataset.val;
-    // "Rundtur fra" og "Region" kan modsige hinanden (fx Aars + Midtjylland). Så nulstilles den anden.
-    const anden = navn === "hjem" ? "region" : navn === "region" ? "hjem" : "";
-    if (anden && filters[anden] && !filtered().length) {
-      filters[anden] = "";
-      toast(anden === "region" ? "Region nulstillet, så ruterne fra " + filters.hjem + " vises" : "\"Rundtur fra\" nulstillet");
-    }
-    lsSet("mcapp.filters", filters);
-    const y = view.scrollTop;
-    renderRuter().then(() => { view.scrollTop = y; });
-  }));
+  $("#filterKnap").onclick = aabnFiltre;
+  view.querySelectorAll("[data-ryd]").forEach((b) => (b.onclick = () => { filters[b.dataset.ryd] = ""; opdaterFiltre(); }));
   view.querySelectorAll("[data-route]").forEach((b) => b.addEventListener("click", () => { location.hash = "#rute/" + b.dataset.route; }));
 
   destroyMap();
